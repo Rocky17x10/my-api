@@ -1,6 +1,6 @@
-
 import {
   Body,
+  BadRequestException,
   Controller,
   Delete,
   Get,
@@ -14,6 +14,7 @@ import {
 import { UsersService } from './users.service';
 import { User } from './user.entity';
 import { CreateUserDto } from './create-user.dto';
+import { UpdateUserDto } from './update-user.dto';
 
 @Controller('users')
 export class UsersController {
@@ -26,7 +27,6 @@ export class UsersController {
   }
 
   // GET /users/:id
-  @Get(':id')
   async findOne(
     @Param('id', ParseIntPipe) id: number,
   ): Promise<User> {
@@ -52,8 +52,17 @@ export class UsersController {
   @Patch(':id')
   update(
     @Param('id', ParseIntPipe) id: number,
-    @Body() updateUserDto: Partial<CreateUserDto>,
+    @Body() updateUserDto: UpdateUserDto,
   ): Promise<User> {
+    if (
+      updateUserDto.name === undefined &&
+      updateUserDto.email === undefined
+    ) {
+      throw new BadRequestException(
+        'Provide at least one field to update: name or email',
+      );
+    }
+
     return this.usersService.update(
       id,
       updateUserDto.name,
