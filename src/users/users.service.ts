@@ -33,6 +33,25 @@ export class UsersService {
     return this.usersRepository.save(user);
   }
 
+  // PATCH /users/:id
+  async update(
+    id: number,
+    name?: string,
+    email?: string,
+  ): Promise<User> {
+    const user = await this.findOne(id);
+
+    if (name !== undefined) {
+      user.name = name;
+    }
+
+    if (email !== undefined) {
+      user.email = email;
+    }
+
+    return this.usersRepository.save(user);
+  }
+
   // DELETE /users/:id
   async remove(id: number): Promise<{ message: string }> {
     const user = await this.findOne(id);
