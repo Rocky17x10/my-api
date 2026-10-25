@@ -1,3 +1,4 @@
+
 import {
   Body,
   BadRequestException,
@@ -27,16 +28,11 @@ export class UsersController {
   }
 
   // GET /users/:id
+  @Get(':id')
   async findOne(
     @Param('id', ParseIntPipe) id: number,
   ): Promise<User> {
-    const user = await this.usersService.findOne(id);
-
-    if (!user) {
-      throw new NotFoundException(`User with ID ${id} not found`);
-    }
-
-    return user;
+    return this.usersService.findOne(id);
   }
 
   // POST /users
@@ -45,6 +41,7 @@ export class UsersController {
     return this.usersService.create(
       createUserDto.name,
       createUserDto.email,
+      createUserDto.password,
     );
   }
 

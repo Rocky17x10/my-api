@@ -1,3 +1,4 @@
+
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -14,4 +15,12 @@ export class User {
 
   @Column({ length: 150, unique: true })
   email: string;
+
+  @Column({
+    type: 'varchar',
+    length: 255,
+    select: false,
+    nullable: true,
+  })
+  password: string | null;
 }
