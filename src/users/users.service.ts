@@ -15,6 +15,18 @@ export class UsersService {
     private readonly usersRepository: Repository<User>,
   ) {}
 
+  // Find a user by email for authentication
+  
+  // Find a user by email for authentication
+  async findByEmail(email: string): Promise<User | null> {
+    return this.usersRepository
+      .createQueryBuilder('user')
+      .addSelect('user.password')
+      .where('user.email = :email', { email })
+      .getOne();
+  }
+
+
   // GET /users
   findAll(): Promise<User[]> {
     return this.usersRepository.find();
