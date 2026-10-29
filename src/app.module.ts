@@ -7,6 +7,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
+import { AssetsModule } from './assets/assets.module';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -36,6 +37,8 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     UsersModule,
 
     AuthModule,
+
+    AssetsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
