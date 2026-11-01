@@ -5,7 +5,11 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
+
+import { User } from '../users/user.entity';
 
 @Entity('assets')
 export class Asset {
@@ -47,8 +51,13 @@ export class Asset {
   })
   status: 'available' | 'assigned' | 'maintenance' | 'retired';
 
-  @Column({ name: 'assigned_to', type: 'int', nullable: true })
-  assignedTo: number | null;
+  @ManyToOne(() => User, {
+    nullable: true,
+    onDelete: 'RESTRICT',
+    onUpdate: 'CASCADE',
+  })
+  @JoinColumn({ name: 'assigned_to' })
+  assignedTo: User | null;
 
   @Column({ type: 'varchar', length: 100, nullable: true })
   department: string | null;
