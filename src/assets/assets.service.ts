@@ -21,8 +21,26 @@ export class AssetsService {
     private readonly usersRepository: Repository<User>,
   ) {}
 
+  // Super Admin and Admin: Get all assets
   async findAll(): Promise<Asset[]> {
     return this.assetsRepository.find({
+      relations: {
+        assignedTo: true,
+      },
+      order: {
+        id: 'DESC',
+      },
+    });
+  }
+
+  // Regular User: Get only assets assigned to their account
+  async findAssignedToUser(userId: number): Promise<Asset[]> {
+    return this.assetsRepository.find({
+      where: {
+        assignedTo: {
+          id: userId,
+        },
+      },
       relations: {
         assignedTo: true,
       },
@@ -54,6 +72,7 @@ export class AssetsService {
     return user;
   }
 
+  // Create an asset
   async create(assetData: any): Promise<Asset> {
     const status = assetData.status ?? 'available';
 
@@ -69,7 +88,6 @@ export class AssetsService {
 
     const { assignedTo, ...otherAssetData } = assetData;
 
-    // Create one Asset object explicitly.
     const asset = new Asset();
 
     Object.assign(asset, otherAssetData);
@@ -79,6 +97,7 @@ export class AssetsService {
     return this.assetsRepository.save(asset);
   }
 
+  // Update an asset
   async update(
     id: number,
     assetData: any,

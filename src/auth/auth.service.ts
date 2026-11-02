@@ -15,23 +15,14 @@ export class AuthService {
   ) {}
 
   async login(email: string, password: string) {
-    // Find the user by email
     const user = await this.usersService.findByEmail(email);
 
-    if (!user) {
+    if (!user || !user.password) {
       throw new UnauthorizedException(
         'Invalid email or password',
       );
     }
 
-    // Ensure the user has a password hash
-    if (!user.password) {
-      throw new UnauthorizedException(
-        'Invalid email or password',
-      );
-    }
-
-    // Compare the submitted password with the stored hash
     const isPasswordValid = await bcrypt.compare(
       password,
       user.password,
@@ -43,15 +34,22 @@ export class AuthService {
       );
     }
 
-    // Create the JWT payload
     const payload = {
       sub: user.id,
       email: user.email,
+      role: user.role,
     };
 
-    // Generate and return the access token
     return {
       access_token: await this.jwtService.signAsync(payload),
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        department: user.department,
+        designation: user.designation,
+      },
     };
   }
 }
