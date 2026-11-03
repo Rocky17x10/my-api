@@ -8,6 +8,7 @@ import { AppService } from './app.service';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { AssetsModule } from './assets/assets.module';
+import { AssetRequestsModule } from './asset-requests/asset-requests.module';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -39,6 +40,8 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     AuthModule,
 
     AssetsModule,
+
+    AssetRequestsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
