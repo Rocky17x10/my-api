@@ -9,6 +9,7 @@ import {
   ParseIntPipe,
   UseGuards,
   Req,
+  ForbiddenException,
 } from '@nestjs/common';
 
 import type { Request } from 'express';
@@ -34,8 +35,7 @@ export class AssetsController {
     private readonly assetsService: AssetsService,
   ) {}
 
-  // All authenticated users can view assets.
-  // Admins see all assets; regular users see only their own.
+  // Get all assets
   @Get()
   findAll(@Req() req: AuthenticatedRequest) {
     const { userId, role } = req.user;
@@ -47,14 +47,47 @@ export class AssetsController {
     return this.assetsService.findAssignedToUser(userId);
   }
 
-  // Only Admin and Super Admin can create assets.
+  // Get complete history of a specific asset
+  // Only Admin and Super Admin can access
+  @Get(':id/history')
+  @Roles('super_admin', 'admin')
+  findAssetHistory(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.assetsService.findAssetHistory(id);
+  }
+
+  // Get assignment history of a specific employee
+  // Employees can view only their own history
+  @Get('history/employee/:employeeId')
+  findEmployeeHistory(
+    @Param('employeeId', ParseIntPipe) employeeId: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const { userId, role } = req.user;
+
+    if (
+      role === 'user' &&
+      userId !== employeeId
+    ) {
+      throw new ForbiddenException(
+        'You can only view your own assignment history.',
+      );
+    }
+
+    return this.assetsService.findEmployeeHistory(
+      employeeId,
+    );
+  }
+
+  // Create an asset
   @Post()
   @Roles('super_admin', 'admin')
   create(@Body() assetData: any) {
     return this.assetsService.create(assetData);
   }
 
-  // Only Admin and Super Admin can edit assets.
+  // Update an asset
   @Patch(':id')
   @Roles('super_admin', 'admin')
   update(
@@ -62,5 +95,29 @@ export class AssetsController {
     @Body() assetData: any,
   ) {
     return this.assetsService.update(id, assetData);
+  }
+
+  // Assign an asset and record the administrator
+  @Post(':id/assign')
+  @Roles('super_admin', 'admin')
+  assignAsset(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('userId') userId: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.assetsService.assignAsset(
+      id,
+      userId,
+      req.user.userId,
+    );
+  }
+
+  // Unassign an asset and record its return date
+  @Patch(':id/unassign')
+  @Roles('super_admin', 'admin')
+  unassignAsset(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.assetsService.unassignAsset(id);
   }
 }
