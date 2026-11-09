@@ -1,0 +1,2686 @@
+===== GIT STATUS =====
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	backend-phase10-review.txt
+
+nothing added to commit but untracked files present (use "git add" to track)
+
+
+===== package.json =====
+{
+  "name": "my-api",
+  "version": "0.0.1",
+  "description": "",
+  "author": "",
+  "private": true,
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "nest build",
+    "deploy": "nest deploy",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "start": "nest start",
+    "start:dev": "nest start --watch",
+    "start:debug": "nest start --debug --watch",
+    "start:prod": "node dist/main",
+    "lint": "oxlint --type-aware src/ test/",
+    "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js",
+    "test:watch": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --watch",
+    "test:cov": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --coverage",
+    "test:debug": "node --inspect-brk --experimental-vm-modules -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
+    "test:e2e": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config ./test/jest-e2e.json"
+  },
+  "dependencies": {
+    "@nestjs/common": "^12.0.1",
+    "@nestjs/config": "^12.0.1",
+    "@nestjs/core": "^12.0.1",
+    "@nestjs/jwt": "^12.0.3",
+    "@nestjs/mapped-types": "^12.0.0",
+    "@nestjs/observe": "^0.3.0",
+    "@nestjs/passport": "^12.0.0",
+    "@nestjs/platform-express": "^12.0.1",
+    "@nestjs/typeorm": "^12.0.2",
+    "bcrypt": "^6.0.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
+    "mysql2": "^3.24.6",
+    "passport": "^0.7.0",
+    "passport-jwt": "^4.0.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "typeorm": "^1.1.2"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^12.0.0",
+    "@nestjs/mau": "^0.2.6",
+    "@nestjs/schematics": "^12.0.0",
+    "@nestjs/testing": "^12.0.1",
+    "@types/bcrypt": "^6.0.0",
+    "@types/express": "^5.0.0",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^24.0.0",
+    "@types/passport-jwt": "^4.0.1",
+    "@types/supertest": "^7.0.0",
+    "jest": "^30.0.0",
+    "oxlint": "^1.58.0",
+    "oxlint-tsgolint": "^7.0.2001",
+    "prettier": "^3.4.2",
+    "source-map-support": "^0.5.21",
+    "supertest": "^7.0.0",
+    "ts-jest": "^29.4.0",
+    "ts-loader": "^9.5.2",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^6.0.2"
+  },
+  "allowScripts": {
+    "bcrypt@6.0.0": true
+  }
+}
+
+
+===== nest-cli.json =====
+{
+  "$schema": "https://json.schemastore.org/nest-cli",
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "src",
+  "compilerOptions": {
+    "deleteOutDir": true
+  }
+}
+
+
+===== tsconfig.json =====
+{
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "resolvePackageJsonExports": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "declaration": true,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "ES2023",
+    "types": ["node", "jest"],
+    "sourceMap": true,
+    "outDir": "./dist",
+    "rootDir": ".",
+    "incremental": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "strictPropertyInitialization": false
+  }
+}
+
+
+===== tsconfig.build.json =====
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "./src"
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
+}
+
+
+===== src/app.controller.spec.ts =====
+import { Test, TestingModule } from '@nestjs/testing';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
+
+describe('AppController', () => {
+  let appController: AppController;
+
+  beforeEach(async () => {
+    const app: TestingModule = await Test.createTestingModule({
+      controllers: [AppController],
+      providers: [AppService],
+    }).compile();
+
+    appController = app.get<AppController>(AppController);
+  });
+
+  describe('root', () => {
+    it('should return "Hello World!"', () => {
+      expect(appController.getHello()).toBe('Hello World!');
+    });
+  });
+});
+
+
+===== src/app.controller.ts =====
+
+import { Controller, Get } from '@nestjs/common';
+import { AppService } from './app.service';
+
+@Controller()
+export class AppController {
+  constructor(private readonly appService: AppService) {}
+
+  @Get()
+  getHello(): string {
+    return this.appService.getHello();
+  }
+
+  @Get('health')
+  getHealth() {
+    return {
+      status: 'ok',
+      message: 'Backend is running',
+    };
+  }
+}
+
+
+
+===== src/app.module.ts =====
+
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { createObserveModule } from '@nestjs/observe';
+
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
+
+import { UsersModule } from './users/users.module';
+import { AuthModule } from './auth/auth.module';
+import { AssetsModule } from './assets/assets.module';
+import { AssetRequestsModule } from './asset-requests/asset-requests.module';
+import { AssetReturnsModule } from './asset-returns/asset-returns.module';
+
+export const { ObserveModule, ObserveInstrument } = createObserveModule();
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+    }),
+
+    ObserveModule.forRoot({
+      appKey: 'YOUR_APP_KEY',
+      appSecret: 'YOUR_APP_SECRET',
+      serviceId: 'my-api',
+    }),
+
+    TypeOrmModule.forRoot({
+      type: 'mysql',
+      host: 'localhost',
+      port: 3306,
+      username: 'appuser',
+      password: process.env.DB_PASSWORD,
+      database: 'myapp_db',
+      autoLoadEntities: true,
+      synchronize: false,
+    }),
+
+    UsersModule,
+    AuthModule,
+    AssetsModule,
+    AssetRequestsModule,
+    AssetReturnsModule,
+  ],
+  controllers: [AppController],
+  providers: [AppService],
+})
+export class AppModule {}
+
+
+===== src/app.service.ts =====
+import { Injectable } from '@nestjs/common';
+
+@Injectable()
+export class AppService {
+  getHello(): string {
+    return 'Hello World!';
+  }
+}
+
+
+===== src/asset-requests/asset-request.entity.ts =====
+
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+} from 'typeorm';
+
+import { User } from '../users/user.entity';
+
+export enum AssetRequestStatus {
+  PENDING = 'pending',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+}
+
+@Entity('asset_requests')
+export class AssetRequest {
+  @PrimaryGeneratedColumn()
+  id: number;
+
+  @ManyToOne(() => User, { nullable: false, onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'requested_by' })
+  requestedBy: User;
+
+  @Column({ type: 'varchar', length: 150 })
+  itemName: string;
+
+  @Column({ type: 'varchar', length: 100 })
+  category: string;
+
+  @Column({ type: 'text' })
+  reason: string;
+
+  @Column({
+    type: 'enum',
+    enum: AssetRequestStatus,
+    default: AssetRequestStatus.PENDING,
+  })
+  status: AssetRequestStatus;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'reviewed_by' })
+  reviewedBy: User | null;
+
+  @Column({ type: 'text', nullable: true })
+  adminNote: string | null;
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
+}
+
+
+===== src/asset-requests/asset-requests.controller.spec.ts =====
+import { Test, TestingModule } from '@nestjs/testing';
+import { AssetRequestsController } from './asset-requests.controller';
+
+describe('AssetRequestsController', () => {
+  let controller: AssetRequestsController;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [AssetRequestsController],
+    }).compile();
+
+    controller = module.get<AssetRequestsController>(AssetRequestsController);
+  });
+
+  it('should be defined', () => {
+    expect(controller).toBeDefined();
+  });
+});
+
+
+===== src/asset-requests/asset-requests.controller.ts =====
+
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Body,
+  Param,
+  Req,
+  UseGuards,
+  ParseIntPipe,
+} from '@nestjs/common';
+
+import { AssetRequestsService } from './asset-requests.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
+
+@Controller('asset-requests')
+@UseGuards(JwtAuthGuard, RolesGuard)
+export class AssetRequestsController {
+  constructor(
+    private readonly assetRequestsService: AssetRequestsService,
+  ) {}
+
+  // Employees submit a new request
+  @Post()
+  create(
+    @Req() req: any,
+    @Body()
+    body: {
+      itemName: string;
+      category: string;
+      reason: string;
+    },
+  ) {
+    return this.assetRequestsService.create(
+      req.user.userId,
+      body,
+    );
+  }
+
+  // Employees view their own requests
+  @Get('my')
+  findMyRequests(@Req() req: any) {
+    return this.assetRequestsService.findMyRequests(
+      req.user.userId,
+    );
+  }
+
+  // Admins view all requests
+  @Get()
+  @Roles('super_admin', 'admin')
+  findAll() {
+    return this.assetRequestsService.findAll();
+  }
+
+  // Admins approve or reject a request
+  @Patch(':id/review')
+  @Roles('super_admin', 'admin')
+  review(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: any,
+    @Body()
+    body: {
+      status: string;
+      adminNote?: string;
+    },
+  ) {
+    return this.assetRequestsService.review(
+      id,
+      req.user.userId,
+      body.status,
+      body.adminNote,
+    );
+  }
+}
+
+
+===== src/asset-requests/asset-requests.module.ts =====
+
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+
+import { AssetRequestsController } from './asset-requests.controller';
+import { AssetRequestsService } from './asset-requests.service';
+import { AssetRequest } from './asset-request.entity';
+import { User } from '../users/user.entity';
+
+@Module({
+  imports: [TypeOrmModule.forFeature([AssetRequest, User])],
+  controllers: [AssetRequestsController],
+  providers: [AssetRequestsService],
+})
+export class AssetRequestsModule {}
+
+
+===== src/asset-requests/asset-requests.service.spec.ts =====
+import { Test, TestingModule } from '@nestjs/testing';
+import { AssetRequestsService } from './asset-requests.service';
+
+describe('AssetRequestsService', () => {
+  let service: AssetRequestsService;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [AssetRequestsService],
+    }).compile();
+
+    service = module.get<AssetRequestsService>(AssetRequestsService);
+  });
+
+  it('should be defined', () => {
+    expect(service).toBeDefined();
+  });
+});
+
+
+===== src/asset-requests/asset-requests.service.ts =====
+
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+
+import {
+  AssetRequest,
+  AssetRequestStatus,
+} from './asset-request.entity';
+import { User } from '../users/user.entity';
+
+@Injectable()
+export class AssetRequestsService {
+  constructor(
+    @InjectRepository(AssetRequest)
+    private readonly requestRepository: Repository<AssetRequest>,
+
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+  ) {}
+
+  async create(
+    userId: number,
+    data: { itemName: string; category: string; reason: string },
+  ) {
+    const itemName = data.itemName?.trim();
+    const category = data.category?.trim();
+    const reason = data.reason?.trim();
+
+    if (!itemName || !category || !reason) {
+      throw new BadRequestException(
+        'Item name, category and reason are required.',
+      );
+    }
+
+    const user = await this.userRepository.findOneBy({ id: userId });
+
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    const request = this.requestRepository.create({
+      requestedBy: user,
+      itemName,
+      category,
+      reason,
+      status: AssetRequestStatus.PENDING,
+    });
+
+    const saved = await this.requestRepository.save(request);
+
+    return this.requestRepository.findOne({
+      where: { id: saved.id },
+      relations: { requestedBy: true, reviewedBy: true },
+    });
+  }
+
+  async findMyRequests(userId: number) {
+    return this.requestRepository.find({
+      where: { requestedBy: { id: userId } },
+      relations: { requestedBy: true, reviewedBy: true },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async findAll() {
+    return this.requestRepository.find({
+      relations: { requestedBy: true, reviewedBy: true },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async review(
+    requestId: number,
+    reviewerId: number,
+    status: string,
+    adminNote?: string,
+  ) {
+    if (
+      status !== AssetRequestStatus.APPROVED &&
+      status !== AssetRequestStatus.REJECTED
+    ) {
+      throw new BadRequestException(
+        'Status must be approved or rejected.',
+      );
+    }
+
+    const request = await this.requestRepository.findOne({
+      where: { id: requestId },
+      relations: { requestedBy: true, reviewedBy: true },
+    });
+
+    if (!request) {
+      throw new NotFoundException('Asset request not found.');
+    }
+
+    if (request.status !== AssetRequestStatus.PENDING) {
+      throw new BadRequestException(
+        'This request has already been reviewed.',
+      );
+    }
+
+    const reviewer = await this.userRepository.findOneBy({
+      id: reviewerId,
+    });
+
+    if (!reviewer) {
+      throw new NotFoundException('Reviewing user not found.');
+    }
+
+    request.status = status as AssetRequestStatus;
+    request.reviewedBy = reviewer;
+    request.adminNote = adminNote?.trim() || null;
+
+    await this.requestRepository.save(request);
+
+    return this.requestRepository.findOne({
+      where: { id: requestId },
+      relations: { requestedBy: true, reviewedBy: true },
+    });
+  }
+}
+
+
+===== src/asset-returns/asset-returns.controller.ts =====
+
+import {
+  Controller,
+  Post,
+  Get,
+  Patch,
+  Body,
+  Req,
+  UseGuards,
+  Param,
+  ParseIntPipe,
+} from '@nestjs/common';
+
+import { AssetReturnsService } from './asset-returns.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
+
+@Controller('asset-returns')
+@UseGuards(JwtAuthGuard, RolesGuard)
+export class AssetReturnsController {
+  constructor(
+    private readonly assetReturnsService: AssetReturnsService,
+  ) {}
+
+  // Employee: submit return request
+  @Post()
+  create(
+    @Req() req: any,
+    @Body() body: {
+      assetId: number;
+      employeeNote?: string;
+    },
+  ) {
+    return this.assetReturnsService.create(
+      req.user.userId,
+      Number(body.assetId),
+      body.employeeNote,
+    );
+  }
+
+  // Employee: view own return requests
+  @Get('my')
+  findMyReturns(@Req() req: any) {
+    return this.assetReturnsService.findMyReturns(
+      req.user.userId,
+    );
+  }
+
+  // Admin and Super Admin: view all requests
+  @Get()
+  @Roles('admin', 'super_admin')
+  findAllReturns() {
+    return this.assetReturnsService.findAllReturns();
+  }
+
+  // Admin and Super Admin: review a return
+  @Patch(':id/review')
+  @Roles('admin', 'super_admin')
+  review(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: any,
+    @Body() body: {
+      status: 'approved' | 'rejected';
+      condition?: 'good' | 'damaged' | 'needs_maintenance';
+      adminNote?: string;
+    },
+  ) {
+    return this.assetReturnsService.review(
+      id,
+      req.user.userId,
+      body,
+    );
+  }
+}
+
+
+===== src/asset-returns/asset-returns.module.ts =====
+
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+
+import { AssetReturnsController } from './asset-returns.controller';
+import { AssetReturnsService } from './asset-returns.service';
+
+import { AssetReturn } from '../assets/asset-return.entity';
+import { Asset } from '../assets/asset.entity';
+import { AssetAssignmentHistory } from '../assets/asset-assignment-history.entity';
+import { User } from '../users/user.entity';
+
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+
+@Module({
+  imports: [
+    TypeOrmModule.forFeature([
+      AssetReturn,
+      Asset,
+      AssetAssignmentHistory,
+      User,
+    ]),
+  ],
+  controllers: [AssetReturnsController],
+  providers: [
+    AssetReturnsService,
+    JwtAuthGuard,
+    RolesGuard,
+  ],
+})
+export class AssetReturnsModule {}
+
+
+===== src/asset-returns/asset-returns.service.ts =====
+
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  ForbiddenException,
+  ConflictException,
+} from '@nestjs/common';
+
+import { InjectRepository } from '@nestjs/typeorm';
+import {
+  Repository,
+  IsNull,
+  EntityManager,
+} from 'typeorm';
+
+import { AssetReturn } from '../assets/asset-return.entity';
+import { Asset } from '../assets/asset.entity';
+import { AssetAssignmentHistory } from '../assets/asset-assignment-history.entity';
+import { User } from '../users/user.entity';
+
+type ReviewReturnData = {
+  status: 'approved' | 'rejected';
+  condition?: 'good' | 'damaged' | 'needs_maintenance';
+  adminNote?: string;
+};
+
+@Injectable()
+export class AssetReturnsService {
+  constructor(
+    @InjectRepository(AssetReturn)
+    private readonly assetReturnRepository: Repository<AssetReturn>,
+
+    @InjectRepository(Asset)
+    private readonly assetRepository: Repository<Asset>,
+
+    @InjectRepository(AssetAssignmentHistory)
+    private readonly historyRepository: Repository<AssetAssignmentHistory>,
+
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+  ) {}
+
+  // EMPLOYEE: Submit a return request
+  async create(
+    userId: number,
+    assetId: number,
+    employeeNote?: string,
+  ) {
+    if (!Number.isInteger(userId) || userId <= 0) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    if (!Number.isInteger(assetId) || assetId <= 0) {
+      throw new BadRequestException('Invalid asset ID');
+    }
+
+    if (
+      employeeNote !== undefined &&
+      typeof employeeNote !== 'string'
+    ) {
+      throw new BadRequestException('Invalid employee note');
+    }
+
+    return this.assetReturnRepository.manager.transaction(
+      async (manager: EntityManager) => {
+        const assetRepo = manager.getRepository(Asset);
+        const historyRepo = manager.getRepository(AssetAssignmentHistory);
+        const returnRepo = manager.getRepository(AssetReturn);
+        const userRepo = manager.getRepository(User);
+
+        const asset = await assetRepo.findOne({
+          where: { id: assetId },
+          relations: { assignedTo: true },
+          lock: { mode: 'pessimistic_write' },
+        });
+
+        if (!asset) {
+          throw new NotFoundException('Asset not found');
+        }
+
+        if (
+          asset.status !== 'assigned' ||
+          !asset.assignedTo ||
+          asset.assignedTo.id !== userId
+        ) {
+          throw new ForbiddenException(
+            'You can only request the return of an asset assigned to you',
+          );
+        }
+
+        const history = await historyRepo.findOne({
+          where: {
+            asset: { id: assetId },
+            assignedTo: { id: userId },
+            returnedAt: IsNull(),
+          },
+          order: { id: 'DESC' },
+          lock: { mode: 'pessimistic_write' },
+        });
+
+        if (!history) {
+          throw new NotFoundException(
+            'Active assignment history not found',
+          );
+        }
+
+        const existingRequest = await returnRepo.findOne({
+          where: {
+            assignmentHistory: { id: history.id },
+            status: 'pending',
+          },
+        });
+
+        if (existingRequest) {
+          throw new ConflictException(
+            'A return request is already pending for this asset',
+          );
+        }
+
+        const employee = await userRepo.findOne({
+          where: { id: userId },
+        });
+
+        if (!employee) {
+          throw new NotFoundException('Employee not found');
+        }
+
+        const returnRequest = returnRepo.create({
+          asset,
+          assignmentHistory: history,
+          requestedBy: employee,
+          reviewedBy: null,
+          status: 'pending',
+          condition: null,
+          employeeNote: employeeNote?.trim() || null,
+          adminNote: null,
+          reviewedAt: null,
+          confirmedAt: null,
+        });
+
+        return returnRepo.save(returnRequest);
+      },
+    );
+  }
+
+  // EMPLOYEE: View own return requests
+  async findMyReturns(userId: number) {
+    return this.assetReturnRepository.find({
+      where: {
+        requestedBy: { id: userId },
+      },
+      relations: {
+        asset: true,
+        assignmentHistory: true,
+        requestedBy: true,
+        reviewedBy: true,
+      },
+      order: {
+        requestedAt: 'DESC',
+      },
+    });
+  }
+
+  // ADMIN: View all return requests
+  async findAllReturns() {
+    return this.assetReturnRepository.find({
+      relations: {
+        asset: true,
+        assignmentHistory: true,
+        requestedBy: true,
+        reviewedBy: true,
+      },
+      order: {
+        requestedAt: 'DESC',
+      },
+    });
+  }
+
+  // ADMIN: Approve or reject a return request
+  async review(
+    returnId: number,
+    adminId: number,
+    data: ReviewReturnData,
+  ) {
+    if (!Number.isInteger(returnId) || returnId <= 0) {
+      throw new BadRequestException('Invalid return request ID');
+    }
+
+    if (!Number.isInteger(adminId) || adminId <= 0) {
+      throw new BadRequestException('Invalid admin ID');
+    }
+
+    if (
+      !data ||
+      !['approved', 'rejected'].includes(data.status)
+    ) {
+      throw new BadRequestException(
+        'Status must be approved or rejected',
+      );
+    }
+
+    if (
+      data.adminNote !== undefined &&
+      typeof data.adminNote !== 'string'
+    ) {
+      throw new BadRequestException('Invalid admin note');
+    }
+
+    const validConditions = [
+      'good',
+      'damaged',
+      'needs_maintenance',
+    ];
+
+    if (
+      data.status === 'approved' &&
+      !validConditions.includes(data.condition as string)
+    ) {
+      throw new BadRequestException(
+        'Please select a valid equipment condition',
+      );
+    }
+
+    if (
+      data.condition !== undefined &&
+      !validConditions.includes(data.condition)
+    ) {
+      throw new BadRequestException('Invalid equipment condition');
+    }
+
+    return this.assetReturnRepository.manager.transaction(
+      async (manager: EntityManager) => {
+        const returnRepo = manager.getRepository(AssetReturn);
+        const assetRepo = manager.getRepository(Asset);
+        const historyRepo = manager.getRepository(AssetAssignmentHistory);
+        const userRepo = manager.getRepository(User);
+
+        // Lock the return request
+        const lockedRequest = await returnRepo.findOne({
+          where: { id: returnId },
+          lock: { mode: 'pessimistic_write' },
+        });
+
+        if (!lockedRequest) {
+          throw new NotFoundException('Return request not found');
+        }
+
+        if (lockedRequest.status !== 'pending') {
+          throw new ConflictException(
+            'This return request has already been reviewed',
+          );
+        }
+
+        // Load the request's related records
+        const returnRequest = await returnRepo.findOne({
+          where: { id: returnId },
+          relations: {
+            asset: true,
+            assignmentHistory: true,
+            requestedBy: true,
+          },
+        });
+
+        if (
+          !returnRequest ||
+          !returnRequest.asset ||
+          !returnRequest.assignmentHistory ||
+          !returnRequest.requestedBy
+        ) {
+          throw new NotFoundException(
+            'Return request information is incomplete',
+          );
+        }
+
+        const admin = await userRepo.findOne({
+          where: { id: adminId },
+        });
+
+        if (!admin) {
+          throw new NotFoundException('Admin not found');
+        }
+
+        // Lock the asset
+        const asset = await assetRepo.findOne({
+          where: { id: returnRequest.asset.id },
+          relations: { assignedTo: true },
+          lock: { mode: 'pessimistic_write' },
+        });
+
+        if (!asset) {
+          throw new NotFoundException('Asset not found');
+        }
+
+        // Lock the assignment history
+        const history = await historyRepo.findOne({
+          where: { id: returnRequest.assignmentHistory.id },
+          lock: { mode: 'pessimistic_write' },
+        });
+
+        if (!history) {
+          throw new NotFoundException('Assignment history not found');
+        }
+
+        const now = new Date();
+
+        if (data.status === 'approved') {
+          if (
+            asset.status !== 'assigned' ||
+            !asset.assignedTo ||
+            asset.assignedTo.id !== returnRequest.requestedBy.id ||
+            history.returnedAt !== null
+          ) {
+            throw new ConflictException(
+              'The asset assignment has changed. This return cannot be approved.',
+            );
+          }
+
+          // Close assignment history
+          history.returnedAt = now;
+          await historyRepo.save(history);
+
+          // Update asset
+          asset.assignedTo = null as any;
+
+          asset.status =
+            data.condition === 'good'
+              ? 'available'
+              : 'maintenance';
+
+          await assetRepo.save(asset);
+
+          returnRequest.condition = data.condition!;
+          returnRequest.confirmedAt = now;
+        } else {
+          // Rejection leaves the assignment unchanged
+          returnRequest.condition = null;
+          returnRequest.confirmedAt = null;
+        }
+
+        returnRequest.status = data.status;
+        returnRequest.reviewedBy = admin;
+        returnRequest.reviewedAt = now;
+        returnRequest.adminNote =
+          data.adminNote?.trim() || null;
+
+        await returnRepo.save(returnRequest);
+
+        return returnRepo.findOne({
+          where: { id: returnId },
+          relations: {
+            asset: true,
+            assignmentHistory: true,
+            requestedBy: true,
+            reviewedBy: true,
+          },
+        });
+      },
+    );
+  }
+}
+
+
+===== src/assets/asset-assignment-history.entity.ts =====
+
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  ManyToOne,
+  JoinColumn,
+  Index,
+} from 'typeorm';
+
+import { Asset } from './asset.entity';
+import { User } from '../users/user.entity';
+
+@Entity('asset_assignment_history')
+@Index('IDX_assignment_history_asset', ['asset'])
+@Index('IDX_assignment_history_employee', ['assignedTo'])
+@Index('IDX_assignment_history_admin', ['assignedBy'])
+export class AssetAssignmentHistory {
+  @PrimaryGeneratedColumn()
+  id: number;
+
+  @ManyToOne(() => Asset, {
+    nullable: false,
+    onDelete: 'RESTRICT',
+    onUpdate: 'CASCADE',
+  })
+  @JoinColumn({ name: 'asset_id' })
+  asset: Asset;
+
+  @ManyToOne(() => User, {
+    nullable: false,
+    onDelete: 'RESTRICT',
+    onUpdate: 'CASCADE',
+  })
+  @JoinColumn({ name: 'assigned_to' })
+  assignedTo: User;
+
+  @ManyToOne(() => User, {
+    nullable: true,
+    onDelete: 'RESTRICT',
+    onUpdate: 'CASCADE',
+  })
+  @JoinColumn({ name: 'assigned_by' })
+  assignedBy: User | null;
+
+  @CreateDateColumn({
+    name: 'assigned_at',
+    type: 'datetime',
+  })
+  assignedAt: Date;
+
+  @Column({
+    name: 'returned_at',
+    type: 'datetime',
+    nullable: true,
+  })
+  returnedAt: Date | null;
+}
+
+
+===== src/assets/asset.entity.ts =====
+
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
+
+import { User } from '../users/user.entity';
+
+@Entity('assets')
+export class Asset {
+  @PrimaryGeneratedColumn()
+  id: number;
+
+  @Column({
+    name: 'asset_tag',
+    type: 'varchar',
+    length: 50,
+    unique: true,
+  })
+  assetTag: string;
+
+  @Column({ type: 'varchar', length: 150 })
+  name: string;
+
+  @Column({ type: 'varchar', length: 50 })
+  category: string;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  brand: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  model: string | null;
+
+  @Column({
+    name: 'serial_number',
+    type: 'varchar',
+    length: 150,
+    nullable: true,
+  })
+  serialNumber: string | null;
+
+  @Column({
+    type: 'enum',
+    enum: ['available', 'assigned', 'maintenance', 'retired'],
+    default: 'available',
+  })
+  status: 'available' | 'assigned' | 'maintenance' | 'retired';
+
+  @ManyToOne(() => User, {
+    nullable: true,
+    onDelete: 'RESTRICT',
+    onUpdate: 'CASCADE',
+  })
+  @JoinColumn({ name: 'assigned_to' })
+  assignedTo: User | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  department: string | null;
+
+  @Column({ type: 'varchar', length: 150, nullable: true })
+  location: string | null;
+
+  @Column({ name: 'purchase_date', type: 'date', nullable: true })
+  purchaseDate: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  notes: string | null;
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at' })
+  updatedAt: Date;
+}
+
+
+===== src/assets/asset-return.entity.ts =====
+
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  ManyToOne,
+  JoinColumn,
+  Index,
+} from 'typeorm';
+
+import { Asset } from './asset.entity';
+import { AssetAssignmentHistory } from './asset-assignment-history.entity';
+import { User } from '../users/user.entity';
+
+export type AssetReturnStatus =
+  | 'pending'
+  | 'approved'
+  | 'rejected';
+
+export type AssetReturnCondition =
+  | 'good'
+  | 'damaged'
+  | 'needs_maintenance';
+
+@Entity('asset_returns')
+@Index('IDX_asset_returns_asset', ['asset'])
+@Index('IDX_asset_returns_assignment', ['assignmentHistory'])
+@Index('IDX_asset_returns_employee', ['requestedBy'])
+@Index('IDX_asset_returns_reviewer', ['reviewedBy'])
+@Index('IDX_asset_returns_status', ['status'])
+export class AssetReturn {
+  @PrimaryGeneratedColumn()
+  id: number;
+
+  // Asset being returned
+  @ManyToOne(() => Asset, {
+    nullable: false,
+    onDelete: 'RESTRICT',
+    onUpdate: 'CASCADE',
+  })
+  @JoinColumn({ name: 'asset_id' })
+  asset: Asset;
+
+  // Original assignment record
+  @ManyToOne(() => AssetAssignmentHistory, {
+    nullable: false,
+    onDelete: 'RESTRICT',
+    onUpdate: 'CASCADE',
+  })
+  @JoinColumn({ name: 'assignment_history_id' })
+  assignmentHistory: AssetAssignmentHistory;
+
+  // Employee requesting the return
+  @ManyToOne(() => User, {
+    nullable: false,
+    onDelete: 'RESTRICT',
+    onUpdate: 'CASCADE',
+  })
+  @JoinColumn({ name: 'requested_by' })
+  requestedBy: User;
+
+  // Administrator reviewing the return
+  @ManyToOne(() => User, {
+    nullable: true,
+    onDelete: 'RESTRICT',
+    onUpdate: 'CASCADE',
+  })
+  @JoinColumn({ name: 'reviewed_by' })
+  reviewedBy: User | null;
+
+  // Return request status
+  @Column({
+    type: 'enum',
+    enum: ['pending', 'approved', 'rejected'],
+    default: 'pending',
+  })
+  status: AssetReturnStatus;
+
+  // Physical equipment condition
+  @Column({
+    type: 'enum',
+    enum: ['good', 'damaged', 'needs_maintenance'],
+    nullable: true,
+  })
+  condition: AssetReturnCondition | null;
+
+  // Employee's return reason
+  @Column({
+    name: 'employee_note',
+    type: 'text',
+    nullable: true,
+  })
+  employeeNote: string | null;
+
+  // Administrator's inspection notes
+  @Column({
+    name: 'admin_note',
+    type: 'text',
+    nullable: true,
+  })
+  adminNote: string | null;
+
+  // Request submission date
+  @CreateDateColumn({
+    name: 'requested_at',
+    type: 'datetime',
+  })
+  requestedAt: Date;
+
+  // Administrator review date
+  @Column({
+    name: 'reviewed_at',
+    type: 'datetime',
+    nullable: true,
+  })
+  reviewedAt: Date | null;
+
+  // Actual return confirmation date
+  @Column({
+    name: 'confirmed_at',
+    type: 'datetime',
+    nullable: true,
+  })
+  confirmedAt: Date | null;
+}
+
+
+===== src/assets/assets.controller.spec.ts =====
+import { Test, TestingModule } from '@nestjs/testing';
+import { AssetsController } from './assets.controller';
+
+describe('AssetsController', () => {
+  let controller: AssetsController;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [AssetsController],
+    }).compile();
+
+    controller = module.get<AssetsController>(AssetsController);
+  });
+
+  it('should be defined', () => {
+    expect(controller).toBeDefined();
+  });
+});
+
+
+===== src/assets/assets.controller.ts =====
+
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Body,
+  Param,
+  ParseIntPipe,
+  UseGuards,
+  Req,
+  ForbiddenException,
+} from '@nestjs/common';
+
+import type { Request } from 'express';
+
+import { AssetsService } from './assets.service';
+
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
+
+interface AuthenticatedRequest extends Request {
+  user: {
+    userId: number;
+    email: string;
+    role: 'super_admin' | 'admin' | 'user';
+  };
+}
+
+@Controller('assets')
+@UseGuards(JwtAuthGuard, RolesGuard)
+export class AssetsController {
+  constructor(
+    private readonly assetsService: AssetsService,
+  ) {}
+
+  // Get all assets
+  @Get()
+  findAll(@Req() req: AuthenticatedRequest) {
+    const { userId, role } = req.user;
+
+    if (role === 'super_admin' || role === 'admin') {
+      return this.assetsService.findAll();
+    }
+
+    return this.assetsService.findAssignedToUser(userId);
+  }
+
+  // Get complete history of a specific asset
+  // Only Admin and Super Admin can access
+  @Get(':id/history')
+  @Roles('super_admin', 'admin')
+  findAssetHistory(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.assetsService.findAssetHistory(id);
+  }
+
+  // Get assignment history of a specific employee
+  // Employees can view only their own history
+  @Get('history/employee/:employeeId')
+  findEmployeeHistory(
+    @Param('employeeId', ParseIntPipe) employeeId: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const { userId, role } = req.user;
+
+    if (
+      role === 'user' &&
+      userId !== employeeId
+    ) {
+      throw new ForbiddenException(
+        'You can only view your own assignment history.',
+      );
+    }
+
+    return this.assetsService.findEmployeeHistory(
+      employeeId,
+    );
+  }
+
+  // Create an asset
+  @Post()
+  @Roles('super_admin', 'admin')
+  create(@Body() assetData: any) {
+    return this.assetsService.create(assetData);
+  }
+
+  // Update an asset
+  @Patch(':id')
+  @Roles('super_admin', 'admin')
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() assetData: any,
+  ) {
+    return this.assetsService.update(id, assetData);
+  }
+
+  // Assign an asset and record the administrator
+  @Post(':id/assign')
+  @Roles('super_admin', 'admin')
+  assignAsset(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('userId') userId: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.assetsService.assignAsset(
+      id,
+      userId,
+      req.user.userId,
+    );
+  }
+
+  // Unassign an asset and record its return date
+  @Patch(':id/unassign')
+  @Roles('super_admin', 'admin')
+  unassignAsset(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.assetsService.unassignAsset(id);
+  }
+}
+
+
+===== src/assets/assets.module.ts =====
+
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+
+import { AssetsService } from './assets.service';
+import { AssetsController } from './assets.controller';
+
+import { Asset } from './asset.entity';
+import { AssetAssignmentHistory } from './asset-assignment-history.entity';
+import { AssetReturn } from './asset-return.entity';
+import { User } from '../users/user.entity';
+
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+
+@Module({
+  imports: [
+    TypeOrmModule.forFeature([
+      Asset,
+      AssetAssignmentHistory,
+      AssetReturn,
+      User,
+    ]),
+  ],
+  providers: [
+    AssetsService,
+    JwtAuthGuard,
+    RolesGuard,
+  ],
+  controllers: [AssetsController],
+})
+export class AssetsModule {}
+
+
+===== src/assets/assets.service.spec.ts =====
+import { Test, TestingModule } from '@nestjs/testing';
+import { AssetsService } from './assets.service';
+
+describe('AssetsService', () => {
+  let service: AssetsService;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [AssetsService],
+    }).compile();
+
+    service = module.get<AssetsService>(AssetsService);
+  });
+
+  it('should be defined', () => {
+    expect(service).toBeDefined();
+  });
+});
+
+
+===== src/assets/assets.service.ts =====
+
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
+
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, IsNull } from 'typeorm';
+
+import { Asset } from './asset.entity';
+import { AssetAssignmentHistory } from './asset-assignment-history.entity';
+import { User } from '../users/user.entity';
+
+@Injectable()
+export class AssetsService {
+  constructor(
+    @InjectRepository(Asset)
+    private readonly assetsRepository: Repository<Asset>,
+
+    @InjectRepository(User)
+    private readonly usersRepository: Repository<User>,
+
+    @InjectRepository(AssetAssignmentHistory)
+    private readonly historyRepository: Repository<AssetAssignmentHistory>,
+  ) {}
+
+  // Get all assets
+  async findAll(): Promise<Asset[]> {
+    return this.assetsRepository.find({
+      relations: {
+        assignedTo: true,
+      },
+      order: {
+        id: 'DESC',
+      },
+    });
+  }
+
+  // Get assets assigned to a specific employee
+  async findAssignedToUser(userId: number): Promise<Asset[]> {
+    return this.assetsRepository.find({
+      where: {
+        assignedTo: {
+          id: userId,
+        },
+      },
+      relations: {
+        assignedTo: true,
+      },
+      order: {
+        id: 'DESC',
+      },
+    });
+  }
+
+  // Get complete assignment history of an asset
+  async findAssetHistory(
+    assetId: number,
+  ): Promise<AssetAssignmentHistory[]> {
+    const asset = await this.assetsRepository.findOneBy({
+      id: assetId,
+    });
+
+    if (!asset) {
+      throw new NotFoundException(
+        `Asset with ID ${assetId} not found.`,
+      );
+    }
+
+    return this.historyRepository.find({
+      where: {
+        asset: {
+          id: assetId,
+        },
+      },
+      relations: {
+        asset: true,
+        assignedTo: true,
+        assignedBy: true,
+      },
+      order: {
+        id: 'DESC',
+      },
+    });
+  }
+
+  // Get complete assignment history of an employee
+  async findEmployeeHistory(
+    employeeId: number,
+  ): Promise<AssetAssignmentHistory[]> {
+    const employee = await this.usersRepository.findOneBy({
+      id: employeeId,
+    });
+
+    if (!employee) {
+      throw new NotFoundException(
+        `Employee with ID ${employeeId} not found.`,
+      );
+    }
+
+    return this.historyRepository.find({
+      where: {
+        assignedTo: {
+          id: employeeId,
+        },
+      },
+      relations: {
+        asset: true,
+        assignedTo: true,
+        assignedBy: true,
+      },
+      order: {
+        id: 'DESC',
+      },
+    });
+  }
+
+  // Create an asset
+  async create(assetData: any): Promise<Asset> {
+    // Assignment must use the dedicated Assign API
+    if (
+      Object.prototype.hasOwnProperty.call(
+        assetData,
+        'assignedTo',
+      )
+    ) {
+      throw new BadRequestException(
+        'Assets cannot be assigned during creation. Use the Assign API.',
+      );
+    }
+
+    const status = assetData.status ?? 'available';
+
+    if (status === 'assigned') {
+      throw new BadRequestException(
+        'Assets cannot be created with Assigned status. Use the Assign API.',
+      );
+    }
+
+    if (
+      !['available', 'maintenance', 'retired'].includes(status)
+    ) {
+      throw new BadRequestException(
+        'Invalid asset status.',
+      );
+    }
+
+    const asset = new Asset();
+
+    Object.assign(asset, assetData);
+
+    asset.status = status;
+    asset.assignedTo = null;
+
+    return this.assetsRepository.save(asset);
+  }
+
+  // Update an asset
+  async update(
+    id: number,
+    assetData: any,
+  ): Promise<Asset> {
+    const asset = await this.assetsRepository.findOne({
+      where: { id },
+      relations: {
+        assignedTo: true,
+      },
+    });
+
+    if (!asset) {
+      throw new NotFoundException(
+        `Asset with ID ${id} not found.`,
+      );
+    }
+
+    // Assignment changes must use the dedicated Assign/Unassign APIs
+    if (
+      Object.prototype.hasOwnProperty.call(
+        assetData,
+        'assignedTo',
+      )
+    ) {
+      throw new BadRequestException(
+        'Assigned employee cannot be changed through asset editing. Use the Assign or Unassign API.',
+      );
+    }
+
+    // Prevent directly setting Assigned status
+    if (assetData.status === 'assigned') {
+      throw new BadRequestException(
+        'Assigned status can only be set through the Assign API.',
+      );
+    }
+
+    // Validate a requested status change
+    if (
+      Object.prototype.hasOwnProperty.call(
+        assetData,
+        'status',
+      )
+    ) {
+      if (
+        !['available', 'maintenance', 'retired'].includes(
+          assetData.status,
+        )
+      ) {
+        throw new BadRequestException(
+          'Invalid asset status.',
+        );
+      }
+
+      if (asset.assignedTo || asset.status === 'assigned') {
+        throw new BadRequestException(
+          'Please unassign this asset before changing its status.',
+        );
+      }
+    }
+
+    // Preserve existing asset assignment information
+    const { assignedTo, ...otherAssetData } = assetData;
+
+    Object.assign(asset, otherAssetData);
+
+    return this.assetsRepository.save(asset);
+  }
+
+  // Assign an available asset and create its history record
+  async assignAsset(
+    assetId: number,
+    userId: number | string,
+    adminId: number,
+  ): Promise<Asset> {
+    const employeeId = Number(userId);
+
+    if (
+      !Number.isInteger(employeeId) ||
+      employeeId <= 0
+    ) {
+      throw new BadRequestException(
+        'Invalid employee ID.',
+      );
+    }
+
+    if (
+      !Number.isInteger(adminId) ||
+      adminId <= 0
+    ) {
+      throw new BadRequestException(
+        'Invalid administrator ID.',
+      );
+    }
+
+    return this.assetsRepository.manager.transaction(
+      async (manager) => {
+        const asset = await manager.findOne(Asset, {
+          where: { id: assetId },
+          relations: {
+            assignedTo: true,
+          },
+          lock: {
+            mode: 'pessimistic_write',
+          },
+        });
+
+        if (!asset) {
+          throw new NotFoundException(
+            `Asset with ID ${assetId} not found.`,
+          );
+        }
+
+        if (
+          asset.status !== 'available' ||
+          asset.assignedTo !== null
+        ) {
+          throw new ConflictException(
+            'This asset is not available for assignment.',
+          );
+        }
+
+        const employee = await manager.findOneBy(
+          User,
+          { id: employeeId },
+        );
+
+        if (!employee) {
+          throw new NotFoundException(
+            `Employee with ID ${employeeId} not found.`,
+          );
+        }
+
+        const admin = await manager.findOneBy(
+          User,
+          { id: adminId },
+        );
+
+        if (!admin) {
+          throw new NotFoundException(
+            `Administrator with ID ${adminId} not found.`,
+          );
+        }
+
+        asset.assignedTo = employee;
+        asset.status = 'assigned';
+
+        await manager.save(Asset, asset);
+
+        const history = manager.create(
+          AssetAssignmentHistory,
+          {
+            asset,
+            assignedTo: employee,
+            assignedBy: admin,
+            returnedAt: null,
+          },
+        );
+
+        await manager.save(
+          AssetAssignmentHistory,
+          history,
+        );
+
+        return asset;
+      },
+    );
+  }
+
+  // Unassign an asset and record its return date
+  async unassignAsset(
+    assetId: number,
+  ): Promise<Asset> {
+    return this.assetsRepository.manager.transaction(
+      async (manager) => {
+        const asset = await manager.findOne(Asset, {
+          where: { id: assetId },
+          relations: {
+            assignedTo: true,
+          },
+          lock: {
+            mode: 'pessimistic_write',
+          },
+        });
+
+        if (!asset) {
+          throw new NotFoundException(
+            `Asset with ID ${assetId} not found.`,
+          );
+        }
+
+        if (
+          asset.status !== 'assigned' ||
+          !asset.assignedTo
+        ) {
+          throw new BadRequestException(
+            'This asset is not currently assigned.',
+          );
+        }
+
+        const history = await manager.findOne(
+          AssetAssignmentHistory,
+          {
+            where: {
+              asset: {
+                id: assetId,
+              },
+              returnedAt: IsNull(),
+            },
+            order: {
+              id: 'DESC',
+            },
+            lock: {
+              mode: 'pessimistic_write',
+            },
+          },
+        );
+
+        if (!history) {
+          throw new BadRequestException(
+            'No active assignment history found for this asset.',
+          );
+        }
+
+        history.returnedAt = new Date();
+
+        await manager.save(
+          AssetAssignmentHistory,
+          history,
+        );
+
+        asset.assignedTo = null;
+        asset.status = 'available';
+
+        return manager.save(Asset, asset);
+      },
+    );
+  }
+}
+
+
+===== src/auth/auth.controller.spec.ts =====
+import { Test, TestingModule } from '@nestjs/testing';
+import { AuthController } from './auth.controller';
+
+describe('AuthController', () => {
+  let controller: AuthController;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [AuthController],
+    }).compile();
+
+    controller = module.get<AuthController>(AuthController);
+  });
+
+  it('should be defined', () => {
+    expect(controller).toBeDefined();
+  });
+});
+
+
+===== src/auth/auth.controller.ts =====
+
+import {
+  Body,
+  Controller,
+  Post,
+  Get,
+  UseGuards,
+  Req,
+} from '@nestjs/common';
+import type { Request } from 'express';
+
+import { AuthService } from './auth.service';
+import { JwtAuthGuard } from './jwt-auth.guard';
+
+interface AuthenticatedRequest extends Request {
+  user: {
+    userId: number;
+    email: string;
+  };
+}
+
+@Controller('auth')
+export class AuthController {
+  constructor(private readonly authService: AuthService) {}
+
+  @Post('login')
+  login(
+    @Body('email') email: string,
+    @Body('password') password: string,
+  ) {
+    return this.authService.login(email, password);
+  }
+
+  @Get('profile')
+  @UseGuards(JwtAuthGuard)
+  getProfile(@Req() req: AuthenticatedRequest) {
+    return {
+      message: 'You are authenticated!',
+      user: req.user,
+    };
+  }
+}
+
+
+===== src/auth/auth.module.ts =====
+
+import { Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
+import { ConfigService } from '@nestjs/config';
+
+import { AuthService } from './auth.service';
+import { AuthController } from './auth.controller';
+import { JwtStrategy } from './jwt.strategy';
+import { JwtAuthGuard } from './jwt-auth.guard';
+import { UsersModule } from '../users/users.module';
+
+@Module({
+  imports: [
+    UsersModule,
+    PassportModule,
+    JwtModule.registerAsync({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.getOrThrow<string>('JWT_SECRET'),
+        signOptions: { expiresIn: '1h' },
+      }),
+    }),
+  ],
+  controllers: [AuthController],
+  providers: [AuthService, JwtStrategy, JwtAuthGuard],
+})
+export class AuthModule {}
+
+
+===== src/auth/auth.service.spec.ts =====
+import { Test, TestingModule } from '@nestjs/testing';
+import { AuthService } from './auth.service';
+
+describe('AuthService', () => {
+  let service: AuthService;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [AuthService],
+    }).compile();
+
+    service = module.get<AuthService>(AuthService);
+  });
+
+  it('should be defined', () => {
+    expect(service).toBeDefined();
+  });
+});
+
+
+===== src/auth/auth.service.ts =====
+
+import {
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import * as bcrypt from 'bcrypt';
+import { UsersService } from '../users/users.service';
+
+@Injectable()
+export class AuthService {
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly jwtService: JwtService,
+  ) {}
+
+  async login(email: string, password: string) {
+    const user = await this.usersService.findByEmail(email);
+
+    if (!user || !user.password) {
+      throw new UnauthorizedException(
+        'Invalid email or password',
+      );
+    }
+
+    const isPasswordValid = await bcrypt.compare(
+      password,
+      user.password,
+    );
+
+    if (!isPasswordValid) {
+      throw new UnauthorizedException(
+        'Invalid email or password',
+      );
+    }
+
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+    };
+
+    return {
+      access_token: await this.jwtService.signAsync(payload),
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        department: user.department,
+        designation: user.designation,
+      },
+    };
+  }
+}
+
+
+===== src/auth/jwt-auth.guard.ts =====
+
+import { Injectable } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
+
+@Injectable()
+export class JwtAuthGuard extends AuthGuard('jwt') {}
+
+
+===== src/auth/jwt.strategy.ts =====
+
+import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { PassportStrategy } from '@nestjs/passport';
+import { ExtractJwt, Strategy } from 'passport-jwt';
+import { UsersService } from '../users/users.service';
+
+interface JwtPayload {
+  sub: number;
+  email: string;
+}
+
+@Injectable()
+export class JwtStrategy extends PassportStrategy(Strategy) {
+  constructor(
+    configService: ConfigService,
+    private readonly usersService: UsersService,
+  ) {
+    super({
+      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      ignoreExpiration: false,
+      secretOrKey: configService.getOrThrow<string>('JWT_SECRET'),
+    });
+  }
+
+  async validate(payload: JwtPayload) {
+    const user = await this.usersService.findOne(payload.sub);
+
+    return {
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      department: user.department,
+      designation: user.designation,
+    };
+  }
+}
+
+
+===== src/auth/roles.decorator.ts =====
+
+import { SetMetadata } from '@nestjs/common';
+import { UserRole } from '../users/user.entity';
+
+export const ROLES_KEY = 'roles';
+
+export const Roles = (...roles: UserRole[]) =>
+  SetMetadata(ROLES_KEY, roles);
+
+
+===== src/auth/roles.guard.ts =====
+
+import {
+  Injectable,
+  CanActivate,
+  ExecutionContext,
+} from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { ROLES_KEY } from './roles.decorator';
+import { UserRole } from '../users/user.entity';
+
+@Injectable()
+export class RolesGuard implements CanActivate {
+  constructor(private readonly reflector: Reflector) {}
+
+  canActivate(context: ExecutionContext): boolean {
+    const requiredRoles = this.reflector.getAllAndOverride<
+      UserRole[]
+    >(ROLES_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
+    if (!requiredRoles || requiredRoles.length === 0) {
+      return true;
+    }
+
+    const request = context.switchToHttp().getRequest();
+
+    const user = request.user as {
+      role?: UserRole;
+    };
+
+    return !!user?.role && requiredRoles.includes(user.role);
+  }
+}
+
+
+===== src/main.ts =====
+
+import { ValidationPipe } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+
+  // Allow requests from the Next.js frontend
+  app.enableCors({
+    origin: 'http://localhost:3000',
+  });
+
+  // Validate incoming request data
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
+
+  await app.listen(3001);
+}
+
+bootstrap();
+
+
+===== src/users/create-user.dto.ts =====
+
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsString,
+  MaxLength,
+  MinLength,
+  IsOptional,
+} from 'class-validator';
+
+export class CreateUserDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  name: string;
+
+  @IsEmail()
+  @IsNotEmpty()
+  @MaxLength(150)
+  email: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(8)
+  @MaxLength(72)
+  password: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  department?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  designation?: string;
+}
+
+
+===== src/users/update-user.dto.ts =====
+import { PartialType } from '@nestjs/mapped-types';
+import { CreateUserDto } from './create-user.dto';
+
+export class UpdateUserDto extends PartialType(CreateUserDto) {}
+
+===== src/users/user.entity.ts =====
+
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+} from 'typeorm';
+
+export type UserRole = 'super_admin' | 'admin' | 'user';
+
+@Entity('users')
+export class User {
+  @PrimaryGeneratedColumn()
+  id: number;
+
+  @Column({ length: 100 })
+  name: string;
+
+  @Column({ length: 150, unique: true })
+  email: string;
+
+  @Column({
+    type: 'varchar',
+    length: 255,
+    select: false,
+    nullable: true,
+  })
+  password: string | null;
+
+  @Column({
+    type: 'varchar',
+    length: 100,
+    nullable: true,
+  })
+  department: string | null;
+
+  @Column({
+    type: 'varchar',
+    length: 100,
+    nullable: true,
+  })
+  designation: string | null;
+
+  @Column({
+    type: 'enum',
+    enum: ['super_admin', 'admin', 'user'],
+    default: 'user',
+  })
+  role: UserRole;
+}
+
+
+===== src/users/users.controller.spec.ts =====
+import { Test, TestingModule } from '@nestjs/testing';
+import { UsersController } from './users.controller';
+
+describe('UsersController', () => {
+  let controller: UsersController;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [UsersController],
+    }).compile();
+
+    controller = module.get<UsersController>(UsersController);
+  });
+
+  it('should be defined', () => {
+    expect(controller).toBeDefined();
+  });
+});
+
+
+===== src/users/users.controller.ts =====
+
+import {
+  Body,
+  BadRequestException,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  UseGuards,
+  Req,
+} from '@nestjs/common';
+
+import type { Request } from 'express';
+
+import { UsersService } from './users.service';
+import { User } from './user.entity';
+import type { UserRole } from './user.entity';
+
+import { CreateUserDto } from './create-user.dto';
+import { UpdateUserDto } from './update-user.dto';
+
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
+
+interface AuthenticatedRequest extends Request {
+  user: {
+    userId: number;
+    email: string;
+    role: UserRole;
+  };
+}
+
+@Controller('users')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('super_admin', 'admin')
+export class UsersController {
+  constructor(
+    private readonly usersService: UsersService,
+  ) {}
+
+  // GET /users
+  @Get()
+  findAll(): Promise<User[]> {
+    return this.usersService.findAll();
+  }
+
+  // GET /users/:id
+  @Get(':id')
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<User> {
+    return this.usersService.findOne(id);
+  }
+
+  // POST /users
+  @Post()
+  create(
+    @Body() createUserDto: CreateUserDto,
+  ): Promise<User> {
+    return this.usersService.create(
+      createUserDto.name,
+      createUserDto.email,
+      createUserDto.password,
+      createUserDto.department,
+      createUserDto.designation,
+    );
+  }
+
+  // PATCH /users/:id
+  @Patch(':id')
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateUserDto: UpdateUserDto,
+  ): Promise<User> {
+    if (
+      updateUserDto.name === undefined &&
+      updateUserDto.email === undefined &&
+      updateUserDto.department === undefined &&
+      updateUserDto.designation === undefined
+    ) {
+      throw new BadRequestException(
+        'Provide at least one field to update',
+      );
+    }
+
+    return this.usersService.update(
+      id,
+      updateUserDto.name,
+      updateUserDto.email,
+      updateUserDto.department,
+      updateUserDto.designation,
+    );
+  }
+
+  // PATCH /users/:id/role
+  // Only Super Admin can promote or demote accounts
+  @Patch(':id/role')
+  @Roles('super_admin')
+  changeRole(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('role') role: string,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<User> {
+    if (role !== 'admin' && role !== 'user') {
+      throw new BadRequestException(
+        'Role must be either admin or user.',
+      );
+    }
+
+    return this.usersService.changeRole(
+      id,
+      role as UserRole,
+      req.user.userId,
+    );
+  }
+
+  // DELETE /users/:id
+  @Delete(':id')
+  remove(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.usersService.remove(id);
+  }
+}
+
+
+===== src/users/users.module.ts =====
+
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+
+import { User } from './user.entity';
+import { UsersService } from './users.service';
+import { UsersController } from './users.controller';
+
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+
+@Module({
+  imports: [TypeOrmModule.forFeature([User])],
+  controllers: [UsersController],
+  providers: [
+    UsersService,
+    JwtAuthGuard,
+    RolesGuard,
+  ],
+  exports: [UsersService],
+})
+export class UsersModule {}
+
+
+===== src/users/users.service.spec.ts =====
+import { Test, TestingModule } from '@nestjs/testing';
+import { UsersService } from './users.service';
+
+describe('UsersService', () => {
+  let service: UsersService;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [UsersService],
+    }).compile();
+
+    service = module.get<UsersService>(UsersService);
+  });
+
+  it('should be defined', () => {
+    expect(service).toBeDefined();
+  });
+});
+
+
+===== src/users/users.service.ts =====
+
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
+
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import * as bcrypt from 'bcrypt';
+
+import { User, UserRole } from './user.entity';
+
+@Injectable()
+export class UsersService {
+  constructor(
+    @InjectRepository(User)
+    private readonly usersRepository: Repository<User>,
+  ) {}
+
+  // Find a user by email for authentication
+  async findByEmail(email: string): Promise<User | null> {
+    return this.usersRepository
+      .createQueryBuilder('user')
+      .addSelect('user.password')
+      .where('user.email = :email', { email })
+      .getOne();
+  }
+
+  // GET /users
+  findAll(): Promise<User[]> {
+    return this.usersRepository.find({
+      order: { id: 'DESC' },
+    });
+  }
+
+  // GET /users/:id
+  async findOne(id: number): Promise<User> {
+    const user = await this.usersRepository.findOneBy({ id });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return user;
+  }
+
+  // POST /users
+  async create(
+    name: string,
+    email: string,
+    password: string,
+    department?: string,
+    designation?: string,
+  ): Promise<User> {
+    const hashedPassword = await bcrypt.hash(password, 12);
+
+    const user = this.usersRepository.create({
+      name,
+      email,
+      password: hashedPassword,
+      department: department || null,
+      designation: designation || null,
+    });
+
+    const savedUser = await this.usersRepository.save(user);
+
+    const { password: _password, ...safeUser } = savedUser;
+
+    return safeUser as User;
+  }
+
+  // PATCH /users/:id
+  async update(
+    id: number,
+    name?: string,
+    email?: string,
+    department?: string,
+    designation?: string,
+  ): Promise<User> {
+    const user = await this.findOne(id);
+
+    // Protect the Super Admin account
+    if (user.role === 'super_admin') {
+      throw new ForbiddenException(
+        'The Super Admin account cannot be modified.',
+      );
+    }
+
+    if (name !== undefined) {
+      user.name = name;
+    }
+
+    if (email !== undefined) {
+      user.email = email;
+    }
+
+    if (department !== undefined) {
+      user.department = department || null;
+    }
+
+    if (designation !== undefined) {
+      user.designation = designation || null;
+    }
+
+    return this.usersRepository.save(user);
+  }
+
+  // PATCH /users/:id/role
+  // Only Super Admin can change another account's role
+  async changeRole(
+    id: number,
+    role: UserRole,
+    actorId: number,
+  ): Promise<User> {
+    const user = await this.findOne(id);
+
+    if (id === actorId) {
+      throw new ForbiddenException(
+        'You cannot change your own role.',
+      );
+    }
+
+    if (user.role === 'super_admin') {
+      throw new ForbiddenException(
+        'The Super Admin role cannot be changed.',
+      );
+    }
+
+    if (role !== 'admin' && role !== 'user') {
+      throw new BadRequestException(
+        'Role must be either admin or user.',
+      );
+    }
+
+    user.role = role;
+
+    return this.usersRepository.save(user);
+  }
+
+  // DELETE /users/:id
+  async remove(id: number): Promise<{ message: string }> {
+    const user = await this.findOne(id);
+
+    // Never allow deletion of the Super Admin account
+    if (user.role === 'super_admin') {
+      throw new ForbiddenException(
+        'The Super Admin account cannot be deleted.',
+      );
+    }
+
+    await this.usersRepository.remove(user);
+
+    return { message: 'User deleted successfully' };
+  }
+}
