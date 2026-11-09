@@ -3,12 +3,15 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { createObserveModule } from '@nestjs/observe';
+
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { AssetsModule } from './assets/assets.module';
 import { AssetRequestsModule } from './asset-requests/asset-requests.module';
+import { AssetReturnsModule } from './asset-returns/asset-returns.module';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -36,12 +39,10 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     }),
 
     UsersModule,
-
     AuthModule,
-
     AssetsModule,
-
     AssetRequestsModule,
+    AssetReturnsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

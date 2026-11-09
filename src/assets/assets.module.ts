@@ -7,6 +7,7 @@ import { AssetsController } from './assets.controller';
 
 import { Asset } from './asset.entity';
 import { AssetAssignmentHistory } from './asset-assignment-history.entity';
+import { AssetReturn } from './asset-return.entity';
 import { User } from '../users/user.entity';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -17,6 +18,7 @@ import { RolesGuard } from '../auth/roles.guard';
     TypeOrmModule.forFeature([
       Asset,
       AssetAssignmentHistory,
+      AssetReturn,
       User,
     ]),
   ],
