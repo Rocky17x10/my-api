@@ -15,6 +15,8 @@ import { AssetReturnsModule } from './asset-returns/asset-returns.module';
 import { MaintenanceModule } from './maintenance/maintenance.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { SupportTicketsModule } from './support-tickets/support-tickets.module';
+import { ReportsModule } from './reports/reports.module';
+import { ActivityLogsModule } from './activity-logs/activity-logs.module';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -49,6 +51,8 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     MaintenanceModule,
     DashboardModule,
     SupportTicketsModule,
+    ReportsModule,
+    ActivityLogsModule,
   ],
 
   controllers: [AppController],

@@ -48,7 +48,6 @@ export class AssetsController {
   }
 
   // Get complete history of a specific asset
-  // Only Admin and Super Admin can access
   @Get(':id/history')
   @Roles('super_admin', 'admin')
   findAssetHistory(
@@ -58,7 +57,6 @@ export class AssetsController {
   }
 
   // Get assignment history of a specific employee
-  // Employees can view only their own history
   @Get('history/employee/:employeeId')
   findEmployeeHistory(
     @Param('employeeId', ParseIntPipe) employeeId: number,
@@ -83,18 +81,29 @@ export class AssetsController {
   // Create an asset
   @Post()
   @Roles('super_admin', 'admin')
-  create(@Body() assetData: any) {
-    return this.assetsService.create(assetData);
+  create(
+    @Body() assetData: any,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.assetsService.create(
+      assetData,
+      req.user.userId,
+    );
   }
 
-  // Update an asset
+  // Update an asset and record the administrator
   @Patch(':id')
   @Roles('super_admin', 'admin')
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() assetData: any,
+    @Req() req: AuthenticatedRequest,
   ) {
-    return this.assetsService.update(id, assetData);
+    return this.assetsService.update(
+      id,
+      assetData,
+      req.user.userId,
+    );
   }
 
   // Assign an asset and record the administrator
@@ -112,12 +121,16 @@ export class AssetsController {
     );
   }
 
-  // Unassign an asset and record its return date
+  // Unassign an asset and record the administrator
   @Patch(':id/unassign')
   @Roles('super_admin', 'admin')
   unassignAsset(
     @Param('id', ParseIntPipe) id: number,
+    @Req() req: AuthenticatedRequest,
   ) {
-    return this.assetsService.unassignAsset(id);
+    return this.assetsService.unassignAsset(
+      id,
+      req.user.userId,
+    );
   }
 }

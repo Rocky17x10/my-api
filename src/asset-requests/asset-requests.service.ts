@@ -4,6 +4,7 @@ import {
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
+
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
@@ -11,7 +12,9 @@ import {
   AssetRequest,
   AssetRequestStatus,
 } from './asset-request.entity';
+
 import { User } from '../users/user.entity';
+import { NotificationsService } from '../support-tickets/notifications/notifications.service';
 
 @Injectable()
 export class AssetRequestsService {
@@ -21,8 +24,11 @@ export class AssetRequestsService {
 
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+
+    private readonly notificationsService: NotificationsService,
   ) {}
 
+  // Create a new asset request and notify all administrators.
   async create(
     userId: number,
     data: { itemName: string; category: string; reason: string },
@@ -53,12 +59,36 @@ export class AssetRequestsService {
 
     const saved = await this.requestRepository.save(request);
 
+    // Find all Admin and Super Admin accounts.
+    const administrators = await this.userRepository.find({
+      where: [
+        { role: 'admin' },
+        { role: 'super_admin' },
+      ],
+    });
+
+    // Notify every administrator except the requester.
+    await Promise.all(
+      administrators
+        .filter((admin) => admin.id !== user.id)
+        .map((admin) =>
+          this.notificationsService.createNotification(
+            admin.id,
+            'New Asset Request',
+            `${user.name} submitted a request for ${itemName}.`,
+            'asset_request_new',
+            saved.id,
+          ),
+        ),
+    );
+
     return this.requestRepository.findOne({
       where: { id: saved.id },
       relations: { requestedBy: true, reviewedBy: true },
     });
   }
 
+  // Get requests submitted by the logged-in employee.
   async findMyRequests(userId: number) {
     return this.requestRepository.find({
       where: { requestedBy: { id: userId } },
@@ -67,6 +97,7 @@ export class AssetRequestsService {
     });
   }
 
+  // Get all asset requests.
   async findAll() {
     return this.requestRepository.find({
       relations: { requestedBy: true, reviewedBy: true },
@@ -74,6 +105,7 @@ export class AssetRequestsService {
     });
   }
 
+  // Approve or reject an asset request.
   async review(
     requestId: number,
     reviewerId: number,
@@ -117,6 +149,30 @@ export class AssetRequestsService {
     request.adminNote = adminNote?.trim() || null;
 
     await this.requestRepository.save(request);
+
+    // Notify the employee who submitted the request.
+    const isApproved = status === AssetRequestStatus.APPROVED;
+
+    const title = isApproved
+      ? 'Asset Request Approved'
+      : 'Asset Request Rejected';
+
+    const decision = isApproved ? 'approved' : 'rejected';
+
+    let message = `Your request for ${request.itemName} has been ${decision}.`;
+
+    if (request.adminNote) {
+      message += ` Admin note: ${request.adminNote}`;
+    }
+
+    await this.notificationsService.createNotification(
+      request.requestedBy.id,
+      title,
+      message,
+      isApproved
+        ? 'asset_request_approved'
+        : 'asset_request_rejected',
+    );
 
     return this.requestRepository.findOne({
       where: { id: requestId },

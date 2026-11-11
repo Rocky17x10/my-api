@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { Notification } from '../notification.entity';
+import { User } from '../../users/user.entity';
 
 @Injectable()
 export class NotificationsService {
@@ -16,7 +17,30 @@ export class NotificationsService {
     private readonly notificationRepository: Repository<Notification>,
   ) {}
 
-  // Get the logged-in user's notifications
+  // Create a notification for a specific user.
+  // referenceId is optional and is used for linked records
+  // such as asset requests.
+  async createNotification(
+    recipientId: number,
+    title: string,
+    message: string,
+    type: string,
+    referenceId?: number | null,
+  ) {
+    const notification = this.notificationRepository.create({
+      recipient: { id: recipientId } as User,
+      ticket: null,
+      referenceId: referenceId ?? null,
+      title,
+      message,
+      type,
+      isRead: false,
+    });
+
+    return this.notificationRepository.save(notification);
+  }
+
+  // Get the logged-in user's notifications.
   async findMyNotifications(userId: number) {
     return this.notificationRepository.find({
       where: {
@@ -32,7 +56,7 @@ export class NotificationsService {
     });
   }
 
-  // Get unread notification count
+  // Get unread notification count.
   async getUnreadCount(userId: number) {
     const count = await this.notificationRepository.count({
       where: {
@@ -44,11 +68,8 @@ export class NotificationsService {
     return { count };
   }
 
-  // Mark one notification as read
-  async markAsRead(
-    notificationId: number,
-    userId: number,
-  ) {
+  // Mark one notification as read.
+  async markAsRead(notificationId: number, userId: number) {
     const notification = await this.notificationRepository.findOne({
       where: {
         id: notificationId,
@@ -65,7 +86,7 @@ export class NotificationsService {
     return this.notificationRepository.save(notification);
   }
 
-  // Mark all notifications as read
+  // Mark all notifications as read.
   async markAllAsRead(userId: number) {
     const notifications = await this.notificationRepository.find({
       where: {

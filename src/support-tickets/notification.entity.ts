@@ -30,6 +30,15 @@ export class Notification {
   @JoinColumn({ name: 'ticket_id' })
   ticket: SupportTicket | null;
 
+  // Stores the related asset request ID.
+  // NULL for notifications that are not linked to an asset request.
+  @Column({
+    name: 'reference_id',
+    type: 'int',
+    nullable: true,
+  })
+  referenceId: number | null;
+
   @Column({
     type: 'varchar',
     length: 200,

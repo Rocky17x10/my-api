@@ -12,6 +12,8 @@ import { Repository, IsNull } from 'typeorm';
 import { Asset } from './asset.entity';
 import { AssetAssignmentHistory } from './asset-assignment-history.entity';
 import { User } from '../users/user.entity';
+import { Notification } from '../support-tickets/notification.entity';
+import { ActivityLog } from '../activity-logs/activity-log.entity';
 
 @Injectable()
 export class AssetsService {
@@ -117,9 +119,11 @@ export class AssetsService {
     });
   }
 
-  // Create an asset
-  async create(assetData: any): Promise<Asset> {
-    // Assignment must use the dedicated Assign API
+  // Create an asset and record activity
+  async create(
+    assetData: any,
+    adminId: number,
+  ): Promise<Asset> {
     if (
       Object.prototype.hasOwnProperty.call(
         assetData,
@@ -147,86 +151,207 @@ export class AssetsService {
       );
     }
 
-    const asset = new Asset();
+    if (
+      !Number.isInteger(adminId) ||
+      adminId <= 0
+    ) {
+      throw new BadRequestException(
+        'Invalid administrator ID.',
+      );
+    }
 
-    Object.assign(asset, assetData);
+    return this.assetsRepository.manager.transaction(
+      async (manager) => {
+        const admin = await manager.findOneBy(
+          User,
+          { id: adminId },
+        );
 
-    asset.status = status;
-    asset.assignedTo = null;
+        if (!admin) {
+          throw new NotFoundException(
+            `Administrator with ID ${adminId} not found.`,
+          );
+        }
 
-    return this.assetsRepository.save(asset);
+        const asset = new Asset();
+
+        Object.assign(asset, assetData);
+
+        asset.status = status;
+        asset.assignedTo = null;
+
+        const savedAsset = await manager.save(
+          Asset,
+          asset,
+        );
+
+        const activityLog = manager.create(
+          ActivityLog,
+          {
+            actor: admin,
+            action: 'ASSET_CREATED',
+            entityType: 'asset',
+            entityId: savedAsset.id,
+            description: `${admin.name} created asset ${savedAsset.name} (${savedAsset.assetTag}).`,
+            metadata: {
+              assetId: savedAsset.id,
+              assetTag: savedAsset.assetTag,
+              assetName: savedAsset.name,
+              category: savedAsset.category,
+              status: savedAsset.status,
+              createdById: admin.id,
+              createdByName: admin.name,
+            },
+          },
+        );
+
+        await manager.save(
+          ActivityLog,
+          activityLog,
+        );
+
+        return savedAsset;
+      },
+    );
   }
 
-  // Update an asset
+  // Update an asset and record activity
   async update(
     id: number,
     assetData: any,
+    adminId: number,
   ): Promise<Asset> {
-    const asset = await this.assetsRepository.findOne({
-      where: { id },
-      relations: {
-        assignedTo: true,
+    if (
+      !Number.isInteger(adminId) ||
+      adminId <= 0
+    ) {
+      throw new BadRequestException(
+        'Invalid administrator ID.',
+      );
+    }
+
+    return this.assetsRepository.manager.transaction(
+      async (manager) => {
+        const asset = await manager.findOne(Asset, {
+          where: { id },
+          relations: {
+            assignedTo: true,
+          },
+          lock: {
+            mode: 'pessimistic_write',
+          },
+        });
+
+        if (!asset) {
+          throw new NotFoundException(
+            `Asset with ID ${id} not found.`,
+          );
+        }
+
+        if (
+          Object.prototype.hasOwnProperty.call(
+            assetData,
+            'assignedTo',
+          )
+        ) {
+          throw new BadRequestException(
+            'Assigned employee cannot be changed through asset editing. Use the Assign or Unassign API.',
+          );
+        }
+
+        if (assetData.status === 'assigned') {
+          throw new BadRequestException(
+            'Assigned status can only be set through the Assign API.',
+          );
+        }
+
+        if (
+          Object.prototype.hasOwnProperty.call(
+            assetData,
+            'status',
+          )
+        ) {
+          if (
+            !['available', 'maintenance', 'retired'].includes(
+              assetData.status,
+            )
+          ) {
+            throw new BadRequestException(
+              'Invalid asset status.',
+            );
+          }
+
+          if (
+            asset.assignedTo ||
+            asset.status === 'assigned'
+          ) {
+            throw new BadRequestException(
+              'Please unassign this asset before changing its status.',
+            );
+          }
+        }
+
+        const admin = await manager.findOneBy(
+          User,
+          { id: adminId },
+        );
+
+        if (!admin) {
+          throw new NotFoundException(
+            `Administrator with ID ${adminId} not found.`,
+          );
+        }
+
+        const previousValues = {
+          name: asset.name,
+          category: asset.category,
+          brand: asset.brand,
+          model: asset.model,
+          status: asset.status,
+          location: asset.location,
+          department: asset.department,
+        };
+
+        const { assignedTo, ...otherAssetData } = assetData;
+
+        Object.assign(asset, otherAssetData);
+
+        const savedAsset = await manager.save(
+          Asset,
+          asset,
+        );
+
+        const activityLog = manager.create(
+          ActivityLog,
+          {
+            actor: admin,
+            action: 'ASSET_UPDATED',
+            entityType: 'asset',
+            entityId: savedAsset.id,
+            description: `${admin.name} updated asset ${savedAsset.name} (${savedAsset.assetTag}).`,
+            metadata: {
+              assetTag: savedAsset.assetTag,
+              assetName: savedAsset.name,
+              previousValues,
+              updatedValues: assetData,
+              updatedById: admin.id,
+              updatedByName: admin.name,
+            },
+          },
+        );
+
+        await manager.save(
+          ActivityLog,
+          activityLog,
+        );
+
+        return savedAsset;
       },
-    });
-
-    if (!asset) {
-      throw new NotFoundException(
-        `Asset with ID ${id} not found.`,
-      );
-    }
-
-    // Assignment changes must use the dedicated Assign/Unassign APIs
-    if (
-      Object.prototype.hasOwnProperty.call(
-        assetData,
-        'assignedTo',
-      )
-    ) {
-      throw new BadRequestException(
-        'Assigned employee cannot be changed through asset editing. Use the Assign or Unassign API.',
-      );
-    }
-
-    // Prevent directly setting Assigned status
-    if (assetData.status === 'assigned') {
-      throw new BadRequestException(
-        'Assigned status can only be set through the Assign API.',
-      );
-    }
-
-    // Validate a requested status change
-    if (
-      Object.prototype.hasOwnProperty.call(
-        assetData,
-        'status',
-      )
-    ) {
-      if (
-        !['available', 'maintenance', 'retired'].includes(
-          assetData.status,
-        )
-      ) {
-        throw new BadRequestException(
-          'Invalid asset status.',
-        );
-      }
-
-      if (asset.assignedTo || asset.status === 'assigned') {
-        throw new BadRequestException(
-          'Please unassign this asset before changing its status.',
-        );
-      }
-    }
-
-    // Preserve existing asset assignment information
-    const { assignedTo, ...otherAssetData } = assetData;
-
-    Object.assign(asset, otherAssetData);
-
-    return this.assetsRepository.save(asset);
+    );
   }
 
-  // Assign an available asset and create its history record
+  // Assign an available asset, record history,
+  // notify the employee, and record activity.
   async assignAsset(
     assetId: number,
     userId: number | string,
@@ -321,15 +446,67 @@ export class AssetsService {
           history,
         );
 
+        const notification = manager.create(
+          Notification,
+          {
+            recipient: employee,
+            ticket: null,
+            referenceId: asset.id,
+            title: 'Asset Assigned',
+            message: `${asset.name} (${asset.assetTag}) has been assigned to you.`,
+            type: 'asset_assigned',
+            isRead: false,
+          },
+        );
+
+        await manager.save(
+          Notification,
+          notification,
+        );
+
+        const activityLog = manager.create(
+          ActivityLog,
+          {
+            actor: admin,
+            action: 'ASSET_ASSIGNED',
+            entityType: 'asset',
+            entityId: asset.id,
+            description: `${admin.name} assigned ${asset.name} (${asset.assetTag}) to ${employee.name}.`,
+            metadata: {
+              assetTag: asset.assetTag,
+              assetName: asset.name,
+              assignedToId: employee.id,
+              assignedToName: employee.name,
+              assignedById: admin.id,
+              assignedByName: admin.name,
+            },
+          },
+        );
+
+        await manager.save(
+          ActivityLog,
+          activityLog,
+        );
+
         return asset;
       },
     );
   }
 
-  // Unassign an asset and record its return date
+  // Unassign an asset and record activity
   async unassignAsset(
     assetId: number,
+    adminId: number,
   ): Promise<Asset> {
+    if (
+      !Number.isInteger(adminId) ||
+      adminId <= 0
+    ) {
+      throw new BadRequestException(
+        'Invalid administrator ID.',
+      );
+    }
+
     return this.assetsRepository.manager.transaction(
       async (manager) => {
         const asset = await manager.findOne(Asset, {
@@ -357,6 +534,19 @@ export class AssetsService {
           );
         }
 
+        const employee = asset.assignedTo;
+
+        const admin = await manager.findOneBy(
+          User,
+          { id: adminId },
+        );
+
+        if (!admin) {
+          throw new NotFoundException(
+            `Administrator with ID ${adminId} not found.`,
+          );
+        }
+
         const history = await manager.findOne(
           AssetAssignmentHistory,
           {
@@ -381,7 +571,9 @@ export class AssetsService {
           );
         }
 
-        history.returnedAt = new Date();
+        const returnDate = new Date();
+
+        history.returnedAt = returnDate;
 
         await manager.save(
           AssetAssignmentHistory,
@@ -391,7 +583,39 @@ export class AssetsService {
         asset.assignedTo = null;
         asset.status = 'available';
 
-        return manager.save(Asset, asset);
+        const savedAsset = await manager.save(
+          Asset,
+          asset,
+        );
+
+        // Record asset unassignment activity
+        const activityLog = manager.create(
+          ActivityLog,
+          {
+            actor: admin,
+            action: 'ASSET_UNASSIGNED',
+            entityType: 'asset',
+            entityId: savedAsset.id,
+            description: `${admin.name} unassigned ${savedAsset.name} (${savedAsset.assetTag}) from ${employee.name}.`,
+            metadata: {
+              assetId: savedAsset.id,
+              assetTag: savedAsset.assetTag,
+              assetName: savedAsset.name,
+              previousEmployeeId: employee.id,
+              previousEmployeeName: employee.name,
+              unassignedById: admin.id,
+              unassignedByName: admin.name,
+              returnedAt: returnDate.toISOString(),
+            },
+          },
+        );
+
+        await manager.save(
+          ActivityLog,
+          activityLog,
+        );
+
+        return savedAsset;
       },
     );
   }
