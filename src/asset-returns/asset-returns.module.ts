@@ -12,6 +12,7 @@ import { User } from '../users/user.entity';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
+import { ActivityLogsModule } from '../activity-logs/activity-logs.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { RolesGuard } from '../auth/roles.guard';
       AssetAssignmentHistory,
       User,
     ]),
+    ActivityLogsModule,
   ],
   controllers: [AssetReturnsController],
   providers: [

@@ -1,3 +1,4 @@
+
 import {
   Injectable,
   NotFoundException,
@@ -12,6 +13,8 @@ import { Maintenance } from './maintenance.entity';
 import { Asset } from '../assets/asset.entity';
 import { User } from '../users/user.entity';
 
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+
 import {
   CreateMaintenanceDto,
   CompleteMaintenanceDto,
@@ -22,11 +25,14 @@ export class MaintenanceService {
   constructor(
     @InjectRepository(Maintenance)
     private readonly maintenanceRepository: Repository<Maintenance>,
+
     private readonly dataSource: DataSource,
+
+    private readonly activityLogsService: ActivityLogsService,
   ) {}
 
   async create(dto: CreateMaintenanceDto, userId: number) {
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const assetRepository = manager.getRepository(Asset);
       const maintenanceRepository = manager.getRepository(Maintenance);
 
@@ -84,7 +90,7 @@ export class MaintenanceService {
 
       const saved = await maintenanceRepository.save(maintenance);
 
-      return maintenanceRepository.findOne({
+      const record = await maintenanceRepository.findOne({
         where: { id: saved.id },
         relations: {
           asset: true,
@@ -92,7 +98,33 @@ export class MaintenanceService {
           completedBy: true,
         },
       });
+
+      if (!record) {
+        throw new NotFoundException('Maintenance record not found');
+      }
+
+      return record;
     });
+
+    // Record maintenance creation
+    await this.activityLogsService.createLog({
+      actorId: userId,
+      action: 'MAINTENANCE_CREATED',
+      entityType: 'maintenance',
+      entityId: result.id,
+      description: `Maintenance record created for ${result.asset.name} (${result.asset.assetTag}).`,
+      metadata: {
+        maintenanceId: result.id,
+        assetId: result.asset.id,
+        assetName: result.asset.name,
+        assetTag: result.asset.assetTag,
+        maintenanceType: result.maintenanceType,
+        problemDescription: result.problemDescription,
+        status: result.status,
+      },
+    });
+
+    return result;
   }
 
   async findAll() {
@@ -148,7 +180,7 @@ export class MaintenanceService {
     dto: CompleteMaintenanceDto,
     userId: number,
   ) {
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const maintenanceRepository = manager.getRepository(Maintenance);
       const assetRepository = manager.getRepository(Asset);
 
@@ -177,6 +209,14 @@ export class MaintenanceService {
         throw new NotFoundException('Associated asset not found');
       }
 
+      const previousValues = {
+        status: maintenance.status,
+        repairDetails: maintenance.repairDetails,
+        cost: maintenance.cost,
+        serviceProvider: maintenance.serviceProvider,
+        adminNotes: maintenance.adminNotes,
+      };
+
       maintenance.repairDetails =
         dto.repairDetails?.trim() || maintenance.repairDetails;
 
@@ -197,7 +237,7 @@ export class MaintenanceService {
       await assetRepository.save(asset);
       await maintenanceRepository.save(maintenance);
 
-      return maintenanceRepository.findOne({
+      const record = await maintenanceRepository.findOne({
         where: { id },
         relations: {
           asset: true,
@@ -205,6 +245,54 @@ export class MaintenanceService {
           completedBy: true,
         },
       });
+
+      if (!record) {
+        throw new NotFoundException('Maintenance record not found');
+      }
+
+      return {
+        record,
+        previousValues,
+      };
     });
+
+    const record = result.record;
+
+    // Record maintenance detail updates
+    await this.activityLogsService.createLog({
+      actorId: userId,
+      action: 'MAINTENANCE_UPDATED',
+      entityType: 'maintenance',
+      entityId: record.id,
+      description: `Maintenance details updated for ${record.asset.name} (${record.asset.assetTag}).`,
+      metadata: {
+        previousValues: result.previousValues,
+        updatedValues: {
+          repairDetails: record.repairDetails,
+          cost: record.cost,
+          serviceProvider: record.serviceProvider,
+          adminNotes: record.adminNotes,
+        },
+      },
+    });
+
+    // Record maintenance status change
+    await this.activityLogsService.createLog({
+      actorId: userId,
+      action: 'MAINTENANCE_STATUS_CHANGED',
+      entityType: 'maintenance',
+      entityId: record.id,
+      description: `Maintenance for ${record.asset.name} (${record.asset.assetTag}) changed from in_progress to completed.`,
+      metadata: {
+        previousStatus: result.previousValues.status,
+        newStatus: record.status,
+        assetId: record.asset.id,
+        assetName: record.asset.name,
+        assetPreviousStatus: 'maintenance',
+        assetNewStatus: 'available',
+      },
+    });
+
+    return record;
   }
 }

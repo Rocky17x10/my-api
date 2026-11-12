@@ -60,6 +60,7 @@ export class UsersController {
   @Post()
   create(
     @Body() createUserDto: CreateUserDto,
+    @Req() req: AuthenticatedRequest,
   ): Promise<User> {
     return this.usersService.create(
       createUserDto.name,
@@ -67,6 +68,7 @@ export class UsersController {
       createUserDto.password,
       createUserDto.department,
       createUserDto.designation,
+      req.user.userId,
     );
   }
 
@@ -75,6 +77,7 @@ export class UsersController {
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateUserDto: UpdateUserDto,
+    @Req() req: AuthenticatedRequest,
   ): Promise<User> {
     if (
       updateUserDto.name === undefined &&
@@ -93,6 +96,7 @@ export class UsersController {
       updateUserDto.email,
       updateUserDto.department,
       updateUserDto.designation,
+      req.user.userId,
     );
   }
 
@@ -122,7 +126,11 @@ export class UsersController {
   @Delete(':id')
   remove(
     @Param('id', ParseIntPipe) id: number,
-  ) {
-    return this.usersService.remove(id);
+    @Req() req: AuthenticatedRequest,
+  ): Promise<{ message: string }> {
+    return this.usersService.remove(
+      id,
+      req.user.userId,
+    );
   }
 }

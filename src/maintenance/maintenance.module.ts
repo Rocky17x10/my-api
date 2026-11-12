@@ -1,3 +1,4 @@
+
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
@@ -7,6 +8,8 @@ import { User } from '../users/user.entity';
 
 import { MaintenanceService } from './maintenance.service';
 import { MaintenanceController } from './maintenance.controller';
+
+import { ActivityLogsModule } from '../activity-logs/activity-logs.module';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -18,6 +21,7 @@ import { RolesGuard } from '../auth/roles.guard';
       Asset,
       User,
     ]),
+    ActivityLogsModule,
   ],
   controllers: [MaintenanceController],
   providers: [
