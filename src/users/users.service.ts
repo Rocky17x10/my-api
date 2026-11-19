@@ -31,6 +31,48 @@ export class UsersService {
       .getOne();
   }
 
+  // Find a user by ID, including password for verification
+  async findByIdWithPassword(id: number): Promise<User | null> {
+    return this.usersRepository
+      .createQueryBuilder('user')
+      .addSelect('user.password')
+      .where('user.id = :id', { id })
+      .getOne();
+  }
+
+  // Update a user's hashed password
+  async updatePassword(
+    id: number,
+    hashedPassword: string,
+  ): Promise<void> {
+    const user = await this.findByIdWithPassword(id);
+
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    user.password = hashedPassword;
+
+    await this.usersRepository.save(user);
+  }
+
+  // Record password change in Activity Logs
+  async logPasswordChange(userId: number): Promise<void> {
+    const user = await this.findOne(userId);
+
+    await this.activityLogsService.createLog({
+      actorId: userId,
+      action: 'PASSWORD_CHANGED',
+      entityType: 'user',
+      entityId: userId,
+      description: `Password was changed for employee ${user.name} (${user.email}).`,
+      metadata: {
+        userId,
+        email: user.email,
+      },
+    });
+  }
+
   // GET /users
   findAll(): Promise<User[]> {
     return this.usersRepository.find({

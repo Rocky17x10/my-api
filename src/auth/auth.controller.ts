@@ -7,10 +7,12 @@ import {
   UseGuards,
   Req,
 } from '@nestjs/common';
+
 import type { Request } from 'express';
 
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
+import { ChangePasswordDto } from './change-password.dto';
 
 interface AuthenticatedRequest extends Request {
   user: {
@@ -21,7 +23,9 @@ interface AuthenticatedRequest extends Request {
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+  ) {}
 
   @Post('login')
   login(
@@ -33,10 +37,25 @@ export class AuthController {
 
   @Get('profile')
   @UseGuards(JwtAuthGuard)
-  getProfile(@Req() req: AuthenticatedRequest) {
+  getProfile(
+    @Req() req: AuthenticatedRequest,
+  ) {
     return {
       message: 'You are authenticated!',
       user: req.user,
     };
+  }
+
+  @Post('change-password')
+  @UseGuards(JwtAuthGuard)
+  changePassword(
+    @Body() dto: ChangePasswordDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.authService.changePassword(
+      req.user.userId,
+      dto.currentPassword,
+      dto.newPassword,
+    );
   }
 }
