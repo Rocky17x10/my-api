@@ -14,10 +14,12 @@ import { Asset } from '../assets/asset.entity';
 import { User } from '../users/user.entity';
 
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { paginate } from '../common/pagination';
 
 import {
   CreateMaintenanceDto,
   CompleteMaintenanceDto,
+  MaintenanceQueryDto,
 } from './maintenance.dto';
 
 @Injectable()
@@ -103,39 +105,55 @@ export class MaintenanceService {
         throw new NotFoundException('Maintenance record not found');
       }
 
-      return record;
-    });
+      // Record maintenance creation in the same transaction (SEC-14)
+      await this.activityLogsService.createLog(
+        {
+          actorId: userId,
+          action: 'MAINTENANCE_CREATED',
+          entityType: 'maintenance',
+          entityId: record.id,
+          description: `Maintenance record created for ${record.asset.name} (${record.asset.assetTag}).`,
+          metadata: {
+            maintenanceId: record.id,
+            assetId: record.asset.id,
+            assetName: record.asset.name,
+            assetTag: record.asset.assetTag,
+            maintenanceType: record.maintenanceType,
+            problemDescription: record.problemDescription,
+            status: record.status,
+          },
+        },
+        manager,
+      );
 
-    // Record maintenance creation
-    await this.activityLogsService.createLog({
-      actorId: userId,
-      action: 'MAINTENANCE_CREATED',
-      entityType: 'maintenance',
-      entityId: result.id,
-      description: `Maintenance record created for ${result.asset.name} (${result.asset.assetTag}).`,
-      metadata: {
-        maintenanceId: result.id,
-        assetId: result.asset.id,
-        assetName: result.asset.name,
-        assetTag: result.asset.assetTag,
-        maintenanceType: result.maintenanceType,
-        problemDescription: result.problemDescription,
-        status: result.status,
-      },
+      return record;
     });
 
     return result;
   }
 
-  async findAll() {
-    return this.maintenanceRepository.find({
-      relations: {
-        asset: true,
-        createdBy: true,
-        completedBy: true,
-      },
-      order: { createdAt: 'DESC' },
-    });
+  async findAll(query: MaintenanceQueryDto) {
+    const records = this.maintenanceRepository
+      .createQueryBuilder('maintenance')
+      .leftJoinAndSelect('maintenance.asset', 'asset')
+      .leftJoinAndSelect('maintenance.createdBy', 'createdBy')
+      .leftJoinAndSelect('maintenance.completedBy', 'completedBy');
+
+    if (query.status) {
+      records.andWhere('maintenance.status = :status', { status: query.status });
+    }
+
+    if (query.search) {
+      records.andWhere(
+        `(maintenance.maintenanceType LIKE :search
+          OR maintenance.problemDescription LIKE :search
+          OR asset.assetTag LIKE :search
+          OR asset.name LIKE :search)`,
+        { search: `%${query.search}%` },
+      );
+    }
+
+    return paginate(records, query, `maintenance.${query.sort}`);
   }
 
   async findOne(id: number) {
@@ -251,50 +269,51 @@ export class MaintenanceService {
         throw new NotFoundException('Maintenance record not found');
       }
 
-      return {
-        record,
-        previousValues,
-      };
-    });
-
-    const record = result.record;
-
-    // Record maintenance detail updates
-    await this.activityLogsService.createLog({
-      actorId: userId,
-      action: 'MAINTENANCE_UPDATED',
-      entityType: 'maintenance',
-      entityId: record.id,
-      description: `Maintenance details updated for ${record.asset.name} (${record.asset.assetTag}).`,
-      metadata: {
-        previousValues: result.previousValues,
-        updatedValues: {
-          repairDetails: record.repairDetails,
-          cost: record.cost,
-          serviceProvider: record.serviceProvider,
-          adminNotes: record.adminNotes,
+      // Record maintenance detail updates in the same transaction (SEC-14)
+      await this.activityLogsService.createLog(
+        {
+          actorId: userId,
+          action: 'MAINTENANCE_UPDATED',
+          entityType: 'maintenance',
+          entityId: record.id,
+          description: `Maintenance details updated for ${record.asset.name} (${record.asset.assetTag}).`,
+          metadata: {
+            previousValues,
+            updatedValues: {
+              repairDetails: record.repairDetails,
+              cost: record.cost,
+              serviceProvider: record.serviceProvider,
+              adminNotes: record.adminNotes,
+            },
+          },
         },
-      },
+        manager,
+      );
+
+      // Record maintenance status change
+      await this.activityLogsService.createLog(
+        {
+          actorId: userId,
+          action: 'MAINTENANCE_STATUS_CHANGED',
+          entityType: 'maintenance',
+          entityId: record.id,
+          description: `Maintenance for ${record.asset.name} (${record.asset.assetTag}) changed from in_progress to completed.`,
+          metadata: {
+            previousStatus: previousValues.status,
+            newStatus: record.status,
+            assetId: record.asset.id,
+            assetName: record.asset.name,
+            assetPreviousStatus: 'maintenance',
+            // Only an asset still in maintenance is freed (SEC-10); report what really happened.
+            assetNewStatus: record.asset.status,
+          },
+        },
+        manager,
+      );
+
+      return record;
     });
 
-    // Record maintenance status change
-    await this.activityLogsService.createLog({
-      actorId: userId,
-      action: 'MAINTENANCE_STATUS_CHANGED',
-      entityType: 'maintenance',
-      entityId: record.id,
-      description: `Maintenance for ${record.asset.name} (${record.asset.assetTag}) changed from in_progress to completed.`,
-      metadata: {
-        previousStatus: result.previousValues.status,
-        newStatus: record.status,
-        assetId: record.asset.id,
-        assetName: record.asset.name,
-        assetPreviousStatus: 'maintenance',
-        // Only an asset still in maintenance is freed (SEC-10); report what really happened.
-        assetNewStatus: record.asset.status,
-      },
-    });
-
-    return record;
+    return result;
   }
 }

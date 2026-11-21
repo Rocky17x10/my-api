@@ -12,6 +12,8 @@ import {
 } from 'class-validator';
 
 import { OmittableNotNull } from '../../common/omittable-not-null';
+import { PageQueryDto } from '../../common/pagination';
+import type { Asset } from '../asset.entity';
 
 // Lengths match the columns in asset.entity.ts. id, assignedTo and timestamps are not
 // fields here, so the global ValidationPipe rejects them (SEC-03).
@@ -108,4 +110,22 @@ export class AssignAssetDto {
   @IsInt()
   @Min(1)
   userId: number;
+}
+
+const ASSET_SORTS = ['id', 'name', 'assetTag', 'category', 'status', 'createdAt'] as const;
+
+// GET /assets: page, sort and filters.
+export class AssetListQueryDto extends PageQueryDto {
+  @IsOptional()
+  @IsIn(ASSET_SORTS)
+  sort: (typeof ASSET_SORTS)[number] = 'id';
+
+  @IsOptional()
+  @IsIn(['available', 'assigned', 'maintenance', 'retired'])
+  status?: Asset['status'];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  category?: string;
 }

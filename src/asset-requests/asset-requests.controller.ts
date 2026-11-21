@@ -6,7 +6,7 @@ import {
   Patch,
   Body,
   Param,
-  Req,
+  Query,
   UseGuards,
   ParseIntPipe,
 } from '@nestjs/common';
@@ -17,11 +17,12 @@ import { RolesGuard } from '../auth/roles.guard';
 import { AnyRole, Roles } from '../auth/roles.decorator';
 import type { AuthUser } from '../auth/jwt.strategy';
 
-type AuthenticatedRequest = { user: AuthUser };
 import {
+  AssetRequestQueryDto,
   CreateAssetRequestDto,
   ReviewAssetRequestDto,
 } from './dto/asset-request.dto';
+import { CurrentUser } from '../common/current-user.decorator';
 
 @Controller('asset-requests')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -34,11 +35,11 @@ export class AssetRequestsController {
   @Post()
   @AnyRole()
   create(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthUser,
     @Body() body: CreateAssetRequestDto,
   ) {
     return this.assetRequestsService.create(
-      req.user.userId,
+      user.userId,
       body,
     );
   }
@@ -46,17 +47,21 @@ export class AssetRequestsController {
   // Employees view their own requests
   @Get('my')
   @AnyRole()
-  findMyRequests(@Req() req: AuthenticatedRequest) {
+  findMyRequests(
+    @CurrentUser() user: AuthUser,
+    @Query() query: AssetRequestQueryDto,
+  ) {
     return this.assetRequestsService.findMyRequests(
-      req.user.userId,
+      user.userId,
+      query,
     );
   }
 
   // Admins view all requests
   @Get()
   @Roles('super_admin', 'admin')
-  findAll() {
-    return this.assetRequestsService.findAll();
+  findAll(@Query() query: AssetRequestQueryDto) {
+    return this.assetRequestsService.findAll(query);
   }
 
   // Admins approve or reject a request
@@ -64,12 +69,12 @@ export class AssetRequestsController {
   @Roles('super_admin', 'admin')
   review(
     @Param('id', ParseIntPipe) id: number,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthUser,
     @Body() body: ReviewAssetRequestDto,
   ) {
     return this.assetRequestsService.review(
       id,
-      req.user.userId,
+      user.userId,
       body.status,
       body.adminNote,
     );

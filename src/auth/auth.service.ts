@@ -9,6 +9,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import { DataSource } from 'typeorm';
 
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { EnvironmentVariables } from '../config/env.validation';
@@ -58,6 +59,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly refreshTokens: RefreshTokensService,
     private readonly activityLogs: ActivityLogsService,
+    private readonly dataSource: DataSource,
     config: ConfigService<EnvironmentVariables, true>,
   ) {
     this.dummyHash = bcrypt.hash(
@@ -119,14 +121,20 @@ export class AuthService {
       );
     }
 
-    await this.usersService.setPassword(user.id, newPassword, false);
-    await this.refreshTokens.endAllSessions(user.id);
-    await this.activityLogs.createLog({
-      actorId: user.id,
-      action: 'PASSWORD_CHANGED',
-      entityType: 'employee',
-      entityId: user.id,
-      description: `${user.name} changed their password.`,
+    // The log commits or rolls back with the change it describes (SEC-14).
+    await this.dataSource.transaction(async (manager) => {
+      await this.usersService.setPassword(user.id, newPassword, false, manager);
+      await this.refreshTokens.endAllSessions(user.id, manager);
+      await this.activityLogs.createLog(
+        {
+          actorId: user.id,
+          action: 'PASSWORD_CHANGED',
+          entityType: 'employee',
+          entityId: user.id,
+          description: `${user.name} changed their password.`,
+        },
+        manager,
+      );
     });
 
     user.mustChangePassword = false;
@@ -143,14 +151,24 @@ export class AuthService {
     if (denied) throw new ForbiddenException(denied);
 
     const temporaryPassword = randomBytes(12).toString('base64url');
-    await this.usersService.setPassword(target.id, temporaryPassword, true);
-    await this.refreshTokens.endAllSessions(target.id);
-    await this.activityLogs.createLog({
-      actorId: actor.userId,
-      action: 'PASSWORD_RESET',
-      entityType: 'employee',
-      entityId: target.id,
-      description: `${actor.name} reset the password of ${target.name} (${target.email}).`,
+    await this.dataSource.transaction(async (manager) => {
+      await this.usersService.setPassword(
+        target.id,
+        temporaryPassword,
+        true,
+        manager,
+      );
+      await this.refreshTokens.endAllSessions(target.id, manager);
+      await this.activityLogs.createLog(
+        {
+          actorId: actor.userId,
+          action: 'PASSWORD_RESET',
+          entityType: 'employee',
+          entityId: target.id,
+          description: `${actor.name} reset the password of ${target.name} (${target.email}).`,
+        },
+        manager,
+      );
     });
 
     return { temporaryPassword };
@@ -166,14 +184,19 @@ export class AuthService {
     const denied = accountChangeDenied(actor, target);
     if (denied) throw new ForbiddenException(denied);
 
-    await this.usersService.setActive(target.id, active);
-    if (!active) await this.refreshTokens.endAllSessions(target.id);
-    await this.activityLogs.createLog({
-      actorId: actor.userId,
-      action: active ? 'EMPLOYEE_ACTIVATED' : 'EMPLOYEE_DEACTIVATED',
-      entityType: 'employee',
-      entityId: target.id,
-      description: `${actor.name} ${active ? 'activated' : 'deactivated'} the account of ${target.name} (${target.email}).`,
+    await this.dataSource.transaction(async (manager) => {
+      await this.usersService.setActive(target.id, active, manager);
+      if (!active) await this.refreshTokens.endAllSessions(target.id, manager);
+      await this.activityLogs.createLog(
+        {
+          actorId: actor.userId,
+          action: active ? 'EMPLOYEE_ACTIVATED' : 'EMPLOYEE_DEACTIVATED',
+          entityType: 'employee',
+          entityId: target.id,
+          description: `${actor.name} ${active ? 'activated' : 'deactivated'} the account of ${target.name} (${target.email}).`,
+        },
+        manager,
+      );
     });
 
     return { id: target.id, isActive: active };

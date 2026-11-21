@@ -12,11 +12,13 @@ import { Repository, IsNull } from 'typeorm';
 
 import { Asset } from './asset.entity';
 import { AssetAssignmentHistory } from './asset-assignment-history.entity';
+import { AssetReturn } from './asset-return.entity';
 import { User } from '../users/user.entity';
-import { Notification } from '../support-tickets/notification.entity';
-import { ActivityLog } from '../activity-logs/activity-log.entity';
 import { Maintenance } from '../maintenance/maintenance.entity';
-import { CreateAssetDto, UpdateAssetDto } from './dto/asset.dto';
+import { AssetListQueryDto, CreateAssetDto, UpdateAssetDto } from './dto/asset.dto';
+import { Page, paginate } from '../common/pagination';
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class AssetsService {
@@ -29,35 +31,54 @@ export class AssetsService {
 
     @InjectRepository(AssetAssignmentHistory)
     private readonly historyRepository: Repository<AssetAssignmentHistory>,
+
+    private readonly activityLogsService: ActivityLogsService,
+
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   // Get all assets
-  async findAll(): Promise<Asset[]> {
-    return this.assetsRepository.find({
-      relations: {
-        assignedTo: true,
-      },
-      order: {
-        id: 'DESC',
-      },
-    });
+  findAll(query: AssetListQueryDto): Promise<Page<Asset>> {
+    return this.listAssets(query);
   }
 
   // Get assets assigned to a specific employee
-  async findAssignedToUser(userId: number): Promise<Asset[]> {
-    return this.assetsRepository.find({
-      where: {
-        assignedTo: {
-          id: userId,
-        },
-      },
-      relations: {
-        assignedTo: true,
-      },
-      order: {
-        id: 'DESC',
-      },
-    });
+  findAssignedToUser(userId: number, query: AssetListQueryDto): Promise<Page<Asset>> {
+    return this.listAssets(query, userId);
+  }
+
+  private listAssets(query: AssetListQueryDto, assigneeId?: number): Promise<Page<Asset>> {
+    const builder = this.assetsRepository
+      .createQueryBuilder('asset')
+      .leftJoinAndSelect('asset.assignedTo', 'assignedTo');
+
+    if (assigneeId !== undefined) {
+      builder.andWhere('assignedTo.id = :assigneeId', { assigneeId });
+    }
+
+    if (query.status) {
+      builder.andWhere('asset.status = :status', { status: query.status });
+    }
+
+    if (query.category) {
+      builder.andWhere('asset.category = :category', { category: query.category });
+    }
+
+    if (query.search) {
+      const columns = ['asset.assetTag', 'asset.name', 'asset.serialNumber', 'asset.brand', 'asset.model'];
+
+      // The admin list also finds an asset by who holds it.
+      if (assigneeId === undefined) {
+        columns.push('assignedTo.name', 'assignedTo.email');
+      }
+
+      // LIKE is case-insensitive under the default *_ci collation.
+      builder.andWhere(`(${columns.map((column) => `${column} LIKE :search`).join(' OR ')})`, {
+        search: `%${query.search}%`,
+      });
+    }
+
+    return paginate(builder, query, `asset.${query.sort}`);
   }
 
   // Get complete assignment history of an asset
@@ -158,10 +179,9 @@ export class AssetsService {
           asset,
         );
 
-        const activityLog = manager.create(
-          ActivityLog,
+        await this.activityLogsService.createLog(
           {
-            actor: admin,
+            actorId: admin.id,
             action: 'ASSET_CREATED',
             entityType: 'asset',
             entityId: savedAsset.id,
@@ -176,11 +196,7 @@ export class AssetsService {
               createdByName: admin.name,
             },
           },
-        );
-
-        await manager.save(
-          ActivityLog,
-          activityLog,
+          manager,
         );
 
         return savedAsset;
@@ -281,10 +297,9 @@ export class AssetsService {
           asset,
         );
 
-        const activityLog = manager.create(
-          ActivityLog,
+        await this.activityLogsService.createLog(
           {
-            actor: admin,
+            actorId: admin.id,
             action: 'ASSET_UPDATED',
             entityType: 'asset',
             entityId: savedAsset.id,
@@ -298,11 +313,7 @@ export class AssetsService {
               updatedByName: admin.name,
             },
           },
-        );
-
-        await manager.save(
-          ActivityLog,
-          activityLog,
+          manager,
         );
 
         return savedAsset;
@@ -415,28 +426,18 @@ export class AssetsService {
           history,
         );
 
-        const notification = manager.create(
-          Notification,
-          {
-            recipient: employee,
-            ticket: null,
-            referenceId: asset.id,
-            title: 'Asset Assigned',
-            message: `${asset.name} (${asset.assetTag}) has been assigned to you.`,
-            type: 'asset_assigned',
-            isRead: false,
-          },
+        await this.notificationsService.createNotification(
+          employee.id,
+          'Asset Assigned',
+          `${asset.name} (${asset.assetTag}) has been assigned to you.`,
+          'asset_assigned',
+          asset.id,
+          manager,
         );
 
-        await manager.save(
-          Notification,
-          notification,
-        );
-
-        const activityLog = manager.create(
-          ActivityLog,
+        await this.activityLogsService.createLog(
           {
-            actor: admin,
+            actorId: admin.id,
             action: 'ASSET_ASSIGNED',
             entityType: 'asset',
             entityId: asset.id,
@@ -450,11 +451,7 @@ export class AssetsService {
               assignedByName: admin.name,
             },
           },
-        );
-
-        await manager.save(
-          ActivityLog,
-          activityLog,
+          manager,
         );
 
         return asset;
@@ -549,6 +546,22 @@ export class AssetsService {
           history,
         );
 
+        // A pending return for this assignment can no longer be approved: close it.
+        const closedReturns = await manager
+          .createQueryBuilder()
+          .update(AssetReturn)
+          .set({
+            status: 'rejected',
+            reviewedBy: { id: admin.id },
+            reviewedAt: returnDate,
+            adminNote: 'Closed automatically: the asset was unassigned.',
+          })
+          .where('assignment_history_id = :historyId AND status = :pending', {
+            historyId: history.id,
+            pending: 'pending',
+          })
+          .execute();
+
         asset.assignedTo = null;
         asset.status = 'available';
 
@@ -558,10 +571,9 @@ export class AssetsService {
         );
 
         // Record asset unassignment activity
-        const activityLog = manager.create(
-          ActivityLog,
+        await this.activityLogsService.createLog(
           {
-            actor: admin,
+            actorId: admin.id,
             action: 'ASSET_UNASSIGNED',
             entityType: 'asset',
             entityId: savedAsset.id,
@@ -575,13 +587,11 @@ export class AssetsService {
               unassignedById: admin.id,
               unassignedByName: admin.name,
               returnedAt: returnDate.toISOString(),
+              // Pending return requests closed by this unassignment (audit trail).
+              closedPendingReturns: closedReturns.affected ?? 0,
             },
           },
-        );
-
-        await manager.save(
-          ActivityLog,
-          activityLog,
+          manager,
         );
 
         return savedAsset;

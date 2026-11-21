@@ -9,7 +9,7 @@ import {
 } from 'typeorm';
 
 import { User } from '../users/user.entity';
-import { SupportTicket } from './support-ticket.entity';
+import { SupportTicket } from '../support-tickets/support-ticket.entity';
 
 @Entity('notifications')
 export class Notification {

@@ -4,7 +4,7 @@ import {
 } from '@nestjs/common';
 
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 
 import { ActivityLog } from './activity-log.entity';
 import { User } from '../users/user.entity';
@@ -25,9 +25,13 @@ export class ActivityLogsService {
     private readonly activityLogsRepository: Repository<ActivityLog>,
   ) {}
 
-  // Record an activity
-  async createLog(data: CreateActivityLogData) {
-    const log = this.activityLogsRepository.create({
+  // Record an activity. Pass the caller's transaction manager so the log entry commits or
+  // rolls back together with the change it describes (SEC-14).
+  async createLog(data: CreateActivityLogData, manager?: EntityManager) {
+    const repository = manager
+      ? manager.getRepository(ActivityLog)
+      : this.activityLogsRepository;
+    const log = repository.create({
       actor: data.actorId
         ? ({ id: data.actorId } as User)
         : null,
@@ -38,7 +42,7 @@ export class ActivityLogsService {
       metadata: data.metadata ?? null,
     });
 
-    return this.activityLogsRepository.save(log);
+    return repository.save(log);
   }
 
   // Retrieve activity logs with optional filters

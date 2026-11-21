@@ -7,6 +7,9 @@ import {
   Min,
 } from 'class-validator';
 
+import { PageQueryDto } from '../../common/pagination';
+import type { AssetReturnStatus } from '../../assets/asset-return.entity';
+
 export class CreateAssetReturnDto {
   @IsInt()
   @Min(1)
@@ -31,4 +34,14 @@ export class ReviewAssetReturnDto {
   @IsString()
   @MaxLength(2000)
   adminNote?: string;
+}
+
+export class AssetReturnQueryDto extends PageQueryDto {
+  @IsOptional()
+  @IsIn(['requestedAt', 'status'])
+  sort: 'requestedAt' | 'status' = 'requestedAt';
+
+  @IsOptional()
+  @IsIn(['pending', 'approved', 'rejected'])
+  status?: AssetReturnStatus;
 }

@@ -1,10 +1,14 @@
 import {
+  IsEnum,
   IsIn,
   IsNotEmpty,
   IsOptional,
   IsString,
   MaxLength,
 } from 'class-validator';
+
+import { PageQueryDto } from '../../common/pagination';
+import { AssetRequestStatus } from '../asset-request.entity';
 
 export class CreateAssetRequestDto {
   @IsString()
@@ -31,4 +35,14 @@ export class ReviewAssetRequestDto {
   @IsString()
   @MaxLength(2000)
   adminNote?: string;
+}
+
+export class AssetRequestQueryDto extends PageQueryDto {
+  @IsOptional()
+  @IsIn(['createdAt', 'itemName', 'status'])
+  sort: 'createdAt' | 'itemName' | 'status' = 'createdAt';
+
+  @IsOptional()
+  @IsEnum(AssetRequestStatus)
+  status?: AssetRequestStatus;
 }

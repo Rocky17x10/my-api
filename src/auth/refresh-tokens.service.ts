@@ -3,7 +3,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, LessThan, Repository } from 'typeorm';
+import { EntityManager, IsNull, LessThan, Repository } from 'typeorm';
 
 import { EnvironmentVariables } from '../config/env.validation';
 import { RefreshToken } from './refresh-token.entity';
@@ -60,8 +60,9 @@ export class RefreshTokensService {
   }
 
   /** Password change or reset: ends every session of the user. */
-  async endAllSessions(userId: number): Promise<void> {
-    await this.tokens.update(
+  async endAllSessions(userId: number, manager?: EntityManager): Promise<void> {
+    const tokens = manager?.getRepository(RefreshToken) ?? this.tokens;
+    await tokens.update(
       { userId, revokedAt: IsNull() },
       { revokedAt: new Date() },
     );

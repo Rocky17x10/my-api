@@ -8,7 +8,7 @@ import { AssetsController } from '../assets/assets.controller';
 import { DashboardController } from '../dashboard/dashboard.controller';
 import { MaintenanceController } from '../maintenance/maintenance.controller';
 import { ReportsController } from '../reports/reports.controller';
-import { NotificationsController } from '../support-tickets/notifications/notifications.controller';
+import { NotificationsController } from '../notifications/notifications.controller';
 import { SupportTicketsController } from '../support-tickets/support-tickets.controller';
 import { UsersController } from '../users/users.controller';
 import { AuthController } from './auth.controller';

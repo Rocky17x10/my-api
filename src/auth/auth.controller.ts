@@ -32,10 +32,7 @@ import { AllowPendingPasswordChange, JwtAuthGuard } from './jwt-auth.guard';
 import type { AuthUser } from './jwt.strategy';
 import { Roles } from './roles.decorator';
 import { RolesGuard } from './roles.guard';
-
-interface AuthenticatedRequest extends Request {
-  user: AuthUser;
-}
+import { CurrentUser } from '../common/current-user.decorator';
 
 @Controller('auth')
 export class AuthController {
@@ -91,23 +88,22 @@ export class AuthController {
   @Get('profile')
   @UseGuards(JwtAuthGuard)
   @AllowPendingPasswordChange()
-  getProfile(@Req() req: AuthenticatedRequest) {
-    return {
-      message: 'You are authenticated!',
-      user: req.user,
-    };
+  // Same user shape as login and refresh (`id`, not the internal `userId`).
+  getProfile(@CurrentUser() user: AuthUser): { user: SessionUser } {
+    const { userId, ...rest } = user;
+    return { user: { id: userId, ...rest } };
   }
 
   @Patch('password')
   @UseGuards(JwtAuthGuard, ThrottlerGuard)
   @AllowPendingPasswordChange()
   async changePassword(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthUser,
     @Body() dto: ChangePasswordDto,
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ user: SessionUser }> {
     const session = await this.authService.changePassword(
-      req.user,
+      user,
       dto.currentPassword,
       dto.newPassword,
     );
@@ -120,9 +116,9 @@ export class AuthController {
   @Roles('super_admin', 'admin')
   resetPassword(
     @Param('id', ParseIntPipe) id: number,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthUser,
   ): Promise<{ temporaryPassword: string }> {
-    return this.authService.resetPassword(req.user, id);
+    return this.authService.resetPassword(user, id);
   }
 
   @Patch('users/:id/active')
@@ -131,9 +127,9 @@ export class AuthController {
   setActive(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: SetActiveDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthUser,
   ): Promise<{ id: number; isActive: boolean }> {
-    return this.authService.setActive(req.user, id, dto.active);
+    return this.authService.setActive(user, id, dto.active);
   }
 
   private respond(res: Response, session: Session): { user: SessionUser } {

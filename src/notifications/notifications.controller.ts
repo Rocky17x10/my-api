@@ -4,19 +4,16 @@ import {
   Get,
   Patch,
   Param,
-  Req,
   UseGuards,
   ParseIntPipe,
+  Query,
 } from '@nestjs/common';
 
 import { NotificationsService } from './notifications.service';
-import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
-
-type AuthenticatedRequest = {
-  user: {
-    userId: number;
-  };
-};
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { CurrentUser } from '../common/current-user.decorator';
+import type { AuthUser } from '../auth/jwt.strategy';
+import { NotificationQueryDto } from './notification-query.dto';
 
 @Controller('notifications')
 @UseGuards(JwtAuthGuard)
@@ -28,30 +25,32 @@ export class NotificationsController {
   // Get logged-in user's notifications
   @Get()
   async findMyNotifications(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthUser,
+    @Query() query: NotificationQueryDto,
   ) {
     return this.notificationsService.findMyNotifications(
-      req.user.userId,
+      user.userId,
+      query,
     );
   }
 
   // Get unread notification count
   @Get('unread-count')
   async getUnreadCount(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthUser,
   ) {
     return this.notificationsService.getUnreadCount(
-      req.user.userId,
+      user.userId,
     );
   }
 
   // Mark all notifications as read
   @Patch('read-all')
   async markAllAsRead(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthUser,
   ) {
     return this.notificationsService.markAllAsRead(
-      req.user.userId,
+      user.userId,
     );
   }
 
@@ -59,11 +58,11 @@ export class NotificationsController {
   @Patch(':id/read')
   async markAsRead(
     @Param('id', ParseIntPipe) id: number,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthUser,
   ) {
     return this.notificationsService.markAsRead(
       id,
-      req.user.userId,
+      user.userId,
     );
   }
 }

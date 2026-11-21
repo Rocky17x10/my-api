@@ -7,27 +7,19 @@ import {
   Body,
   Param,
   ParseIntPipe,
+  Query,
   UseGuards,
-  Req,
   ForbiddenException,
 } from '@nestjs/common';
 
-import type { Request } from 'express';
-
 import { AssetsService } from './assets.service';
-import { AssignAssetDto, CreateAssetDto, UpdateAssetDto } from './dto/asset.dto';
+import { AssetListQueryDto, AssignAssetDto, CreateAssetDto, UpdateAssetDto } from './dto/asset.dto';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { AnyRole, Roles } from '../auth/roles.decorator';
-
-interface AuthenticatedRequest extends Request {
-  user: {
-    userId: number;
-    email: string;
-    role: 'super_admin' | 'admin' | 'user';
-  };
-}
+import { CurrentUser } from '../common/current-user.decorator';
+import type { AuthUser } from '../auth/jwt.strategy';
 
 @Controller('assets')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -39,14 +31,17 @@ export class AssetsController {
   // Get all assets
   @Get()
   @AnyRole()
-  findAll(@Req() req: AuthenticatedRequest) {
-    const { userId, role } = req.user;
+  findAll(
+    @CurrentUser() user: AuthUser,
+    @Query() query: AssetListQueryDto,
+  ) {
+    const { userId, role } = user;
 
     if (role === 'super_admin' || role === 'admin') {
-      return this.assetsService.findAll();
+      return this.assetsService.findAll(query);
     }
 
-    return this.assetsService.findAssignedToUser(userId);
+    return this.assetsService.findAssignedToUser(userId, query);
   }
 
   // Get complete history of a specific asset
@@ -63,9 +58,9 @@ export class AssetsController {
   @AnyRole()
   findEmployeeHistory(
     @Param('employeeId', ParseIntPipe) employeeId: number,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthUser,
   ) {
-    const { userId, role } = req.user;
+    const { userId, role } = user;
 
     if (
       role === 'user' &&
@@ -86,11 +81,11 @@ export class AssetsController {
   @Roles('super_admin', 'admin')
   create(
     @Body() dto: CreateAssetDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthUser,
   ) {
     return this.assetsService.create(
       dto,
-      req.user.userId,
+      user.userId,
     );
   }
 
@@ -100,12 +95,12 @@ export class AssetsController {
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateAssetDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthUser,
   ) {
     return this.assetsService.update(
       id,
       dto,
-      req.user.userId,
+      user.userId,
     );
   }
 
@@ -115,12 +110,12 @@ export class AssetsController {
   assignAsset(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: AssignAssetDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthUser,
   ) {
     return this.assetsService.assignAsset(
       id,
       dto.userId,
-      req.user.userId,
+      user.userId,
     );
   }
 
@@ -129,11 +124,11 @@ export class AssetsController {
   @Roles('super_admin', 'admin')
   unassignAsset(
     @Param('id', ParseIntPipe) id: number,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthUser,
   ) {
     return this.assetsService.unassignAsset(
       id,
-      req.user.userId,
+      user.userId,
     );
   }
 }

@@ -12,13 +12,17 @@ import {
   Repository,
   IsNull,
   EntityManager,
+  SelectQueryBuilder,
 } from 'typeorm';
 
 import { AssetReturn } from '../assets/asset-return.entity';
 import { Asset } from '../assets/asset.entity';
+import { Maintenance } from '../maintenance/maintenance.entity';
 import { AssetAssignmentHistory } from '../assets/asset-assignment-history.entity';
 import { User } from '../users/user.entity';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { paginate } from '../common/pagination';
+import { AssetReturnQueryDto } from './dto/asset-return.dto';
 
 type ReviewReturnData = {
   status: 'approved' | 'rejected';
@@ -143,62 +147,88 @@ export class AssetReturnsService {
             confirmedAt: null,
           });
 
-          return returnRepo.save(newReturnRequest);
+          const savedRequest = await returnRepo.save(newReturnRequest);
+
+          // Record the activity in the same transaction as the return request (SEC-14).
+          await this.activityLogsService.createLog(
+            {
+              actorId: userId,
+              action: 'ASSET_RETURN_REQUESTED',
+              entityType: 'asset_return',
+              entityId: savedRequest.id,
+              description: `${savedRequest.requestedBy?.name || 'Employee'} requested to return ${savedRequest.asset?.name || 'an asset'} (${savedRequest.asset?.assetTag || 'unknown tag'}).`,
+              metadata: {
+                returnRequestId: savedRequest.id,
+                assetId,
+                assetName: savedRequest.asset?.name,
+                assetTag: savedRequest.asset?.assetTag,
+                employeeNote: savedRequest.employeeNote,
+                status: savedRequest.status,
+                requestedBy: {
+                  id: userId,
+                  name: savedRequest.requestedBy?.name,
+                },
+              },
+            },
+            manager,
+          );
+
+          return savedRequest;
         },
       );
-
-    // Record the activity after the return request is successfully saved.
-    await this.activityLogsService.createLog({
-      actorId: userId,
-      action: 'ASSET_RETURN_REQUESTED',
-      entityType: 'asset_return',
-      entityId: returnRequest.id,
-      description: `${returnRequest.requestedBy?.name || 'Employee'} requested to return ${returnRequest.asset?.name || 'an asset'} (${returnRequest.asset?.assetTag || 'unknown tag'}).`,
-      metadata: {
-        returnRequestId: returnRequest.id,
-        assetId,
-        assetName: returnRequest.asset?.name,
-        assetTag: returnRequest.asset?.assetTag,
-        employeeNote: returnRequest.employeeNote,
-        status: returnRequest.status,
-        requestedBy: {
-          id: userId,
-          name: returnRequest.requestedBy?.name,
-        },
-      },
-    });
 
     return returnRequest;
   }
 
   // EMPLOYEE: View own return requests
   // The reviewer comes back as id + name only (SEC-13).
-  async findMyReturns(userId: number) {
-    return this.assetReturnRepository
+  async findMyReturns(userId: number, query: AssetReturnQueryDto) {
+    const returns = this.assetReturnRepository
       .createQueryBuilder('assetReturn')
       .leftJoinAndSelect('assetReturn.asset', 'asset')
       .leftJoinAndSelect('assetReturn.assignmentHistory', 'assignmentHistory')
       .leftJoinAndSelect('assetReturn.requestedBy', 'requestedBy')
       .leftJoin('assetReturn.reviewedBy', 'reviewedBy')
       .addSelect(['reviewedBy.id', 'reviewedBy.name'])
-      .where('requestedBy.id = :userId', { userId })
-      .orderBy('assetReturn.requestedAt', 'DESC')
-      .getMany();
+      .where('requestedBy.id = :userId', { userId });
+
+    return this.page(returns, query, ['asset.assetTag', 'asset.name']);
   }
 
   // ADMIN: View all return requests
-  async findAllReturns() {
-    return this.assetReturnRepository.find({
-      relations: {
-        asset: true,
-        assignmentHistory: true,
-        requestedBy: true,
-        reviewedBy: true,
-      },
-      order: {
-        requestedAt: 'DESC',
-      },
-    });
+  async findAllReturns(query: AssetReturnQueryDto) {
+    const returns = this.assetReturnRepository
+      .createQueryBuilder('assetReturn')
+      .leftJoinAndSelect('assetReturn.asset', 'asset')
+      .leftJoinAndSelect('assetReturn.assignmentHistory', 'assignmentHistory')
+      .leftJoinAndSelect('assetReturn.requestedBy', 'requestedBy')
+      .leftJoinAndSelect('assetReturn.reviewedBy', 'reviewedBy');
+
+    return this.page(returns, query, [
+      'asset.assetTag',
+      'asset.name',
+      'requestedBy.name',
+    ]);
+  }
+
+  // Status filter, LIKE search over the given columns, sort and one page.
+  private page(
+    returns: SelectQueryBuilder<AssetReturn>,
+    query: AssetReturnQueryDto,
+    searchColumns: string[],
+  ) {
+    if (query.status) {
+      returns.andWhere('assetReturn.status = :status', { status: query.status });
+    }
+
+    if (query.search) {
+      returns.andWhere(
+        `(${searchColumns.map((column) => `${column} LIKE :search`).join(' OR ')})`,
+        { search: `%${query.search}%` },
+      );
+    }
+
+    return paginate(returns, query, `assetReturn.${query.sort}`);
   }
 
   // ADMIN: Approve or reject a return request
@@ -360,6 +390,37 @@ export class AssetReturnsService {
 
             await assetRepo.save(asset);
 
+            // A damaged return opens its maintenance record at once, so the asset's
+            // "maintenance" status always has a record whose completion frees it.
+            if (asset.status === 'maintenance') {
+              const note = data.adminNote?.trim();
+              const record = await manager.getRepository(Maintenance).save({
+                asset: { id: asset.id },
+                createdBy: { id: admin.id },
+                maintenanceType: 'Return inspection',
+                problemDescription: `Returned as ${data.condition}${note ? `: ${note}` : ''}`,
+                startDate: now,
+                cost: 0,
+                status: 'in_progress',
+              });
+
+              await this.activityLogsService.createLog(
+                {
+                  actorId: admin.id,
+                  action: 'MAINTENANCE_CREATED',
+                  entityType: 'maintenance',
+                  entityId: record.id,
+                  description: `${admin.name} opened maintenance for ${asset.name} (${asset.assetTag}) after a ${data.condition} return.`,
+                  metadata: {
+                    assetId: asset.id,
+                    returnId: request.id,
+                    condition: data.condition,
+                  },
+                },
+                manager,
+              );
+            }
+
             request.condition = data.condition!;
             request.confirmedAt = now;
           } else {
@@ -391,40 +452,43 @@ export class AssetReturnsService {
             );
           }
 
+          // Record the review activity in the same transaction (SEC-14).
+          const approved = data.status === 'approved';
+
+          await this.activityLogsService.createLog(
+            {
+              actorId: adminId,
+              action: approved
+                ? 'ASSET_RETURN_APPROVED'
+                : 'ASSET_RETURN_REJECTED',
+              entityType: 'asset_return',
+              entityId: savedRequest.id,
+              description: `${savedRequest.reviewedBy?.name || 'Admin'} ${approved ? 'approved' : 'rejected'} the return request for ${savedRequest.asset?.name || 'an asset'} (${savedRequest.asset?.assetTag || 'unknown tag'}) submitted by ${savedRequest.requestedBy?.name || 'an employee'}.`,
+              metadata: {
+                returnRequestId: savedRequest.id,
+                assetId: savedRequest.asset?.id,
+                assetName: savedRequest.asset?.name,
+                assetTag: savedRequest.asset?.assetTag,
+                previousStatus: 'pending',
+                newStatus: savedRequest.status,
+                condition: savedRequest.condition,
+                adminNote: savedRequest.adminNote,
+                requestedBy: {
+                  id: savedRequest.requestedBy?.id,
+                  name: savedRequest.requestedBy?.name,
+                },
+                reviewedBy: {
+                  id: adminId,
+                  name: savedRequest.reviewedBy?.name,
+                },
+              },
+            },
+            manager,
+          );
+
           return savedRequest;
         },
       );
-
-    // Record the review activity after the transaction succeeds.
-    const approved = data.status === 'approved';
-
-    await this.activityLogsService.createLog({
-      actorId: adminId,
-      action: approved
-        ? 'ASSET_RETURN_APPROVED'
-        : 'ASSET_RETURN_REJECTED',
-      entityType: 'asset_return',
-      entityId: returnRequest.id,
-      description: `${returnRequest.reviewedBy?.name || 'Admin'} ${approved ? 'approved' : 'rejected'} the return request for ${returnRequest.asset?.name || 'an asset'} (${returnRequest.asset?.assetTag || 'unknown tag'}) submitted by ${returnRequest.requestedBy?.name || 'an employee'}.`,
-      metadata: {
-        returnRequestId: returnRequest.id,
-        assetId: returnRequest.asset?.id,
-        assetName: returnRequest.asset?.name,
-        assetTag: returnRequest.asset?.assetTag,
-        previousStatus: 'pending',
-        newStatus: returnRequest.status,
-        condition: returnRequest.condition,
-        adminNote: returnRequest.adminNote,
-        requestedBy: {
-          id: returnRequest.requestedBy?.id,
-          name: returnRequest.requestedBy?.name,
-        },
-        reviewedBy: {
-          id: adminId,
-          name: returnRequest.reviewedBy?.name,
-        },
-      },
-    });
 
     return returnRequest;
   }

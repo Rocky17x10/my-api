@@ -2,20 +2,23 @@
 import {
   Injectable,
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
 
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, SelectQueryBuilder } from 'typeorm';
 
 import {
   AssetRequest,
   AssetRequestStatus,
 } from './asset-request.entity';
+import { AssetRequestQueryDto } from './dto/asset-request.dto';
+import { paginate } from '../common/pagination';
 
 import { User } from '../users/user.entity';
-import { NotificationsService } from '../support-tickets/notifications/notifications.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 
 @Injectable()
@@ -61,77 +64,115 @@ export class AssetRequestsService {
       status: AssetRequestStatus.PENDING,
     });
 
-    const saved = await this.requestRepository.save(request);
+    // Save, log and notify in one transaction so they commit or roll back together (SEC-14).
+    const savedId = await this.requestRepository.manager.transaction(
+      async (manager) => {
+        const saved = await manager.getRepository(AssetRequest).save(request);
 
-    // Record asset request creation.
-    await this.activityLogsService.createLog({
-      actorId: user.id,
-      action: 'ASSET_REQUEST_CREATED',
-      entityType: 'asset_request',
-      entityId: saved.id,
-      description: `${user.name} submitted an asset request for ${itemName}.`,
-      metadata: {
-        requestId: saved.id,
-        itemName,
-        category,
-        reason,
-        status: saved.status,
-        requestedBy: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-        },
+        // Record asset request creation.
+        await this.activityLogsService.createLog(
+          {
+            actorId: user.id,
+            action: 'ASSET_REQUEST_CREATED',
+            entityType: 'asset_request',
+            entityId: saved.id,
+            description: `${user.name} submitted an asset request for ${itemName}.`,
+            metadata: {
+              requestId: saved.id,
+              itemName,
+              category,
+              reason,
+              status: saved.status,
+              requestedBy: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+              },
+            },
+          },
+          manager,
+        );
+
+        // Find all Admin and Super Admin accounts.
+        const administrators = await manager.getRepository(User).find({
+          where: [
+            { role: 'admin' },
+            { role: 'super_admin' },
+          ],
+        });
+
+        // Notify every administrator except the requester.
+        await Promise.all(
+          administrators
+            .filter((admin) => admin.id !== user.id)
+            .map((admin) =>
+              this.notificationsService.createNotification(
+                admin.id,
+                'New Asset Request',
+                `${user.name} submitted a request for ${itemName}.`,
+                'asset_request_new',
+                saved.id,
+                manager,
+              ),
+            ),
+        );
+
+        return saved.id;
       },
-    });
-
-    // Find all Admin and Super Admin accounts.
-    const administrators = await this.userRepository.find({
-      where: [
-        { role: 'admin' },
-        { role: 'super_admin' },
-      ],
-    });
-
-    // Notify every administrator except the requester.
-    await Promise.all(
-      administrators
-        .filter((admin) => admin.id !== user.id)
-        .map((admin) =>
-          this.notificationsService.createNotification(
-            admin.id,
-            'New Asset Request',
-            `${user.name} submitted a request for ${itemName}.`,
-            'asset_request_new',
-            saved.id,
-          ),
-        ),
     );
 
     return this.requestRepository.findOne({
-      where: { id: saved.id },
+      where: { id: savedId },
       relations: { requestedBy: true, reviewedBy: true },
     });
   }
 
   // Get requests submitted by the logged-in employee.
   // The reviewer comes back as id + name only (SEC-13).
-  async findMyRequests(userId: number) {
-    return this.requestRepository
+  async findMyRequests(userId: number, query: AssetRequestQueryDto) {
+    const requests = this.requestRepository
       .createQueryBuilder('request')
       .leftJoinAndSelect('request.requestedBy', 'requestedBy')
       .leftJoin('request.reviewedBy', 'reviewedBy')
       .addSelect(['reviewedBy.id', 'reviewedBy.name'])
-      .where('requestedBy.id = :userId', { userId })
-      .orderBy('request.createdAt', 'DESC')
-      .getMany();
+      .where('requestedBy.id = :userId', { userId });
+
+    return this.page(requests, query, ['request.itemName', 'request.category']);
   }
 
   // Get all asset requests.
-  async findAll() {
-    return this.requestRepository.find({
-      relations: { requestedBy: true, reviewedBy: true },
-      order: { createdAt: 'DESC' },
-    });
+  async findAll(query: AssetRequestQueryDto) {
+    const requests = this.requestRepository
+      .createQueryBuilder('request')
+      .leftJoinAndSelect('request.requestedBy', 'requestedBy')
+      .leftJoinAndSelect('request.reviewedBy', 'reviewedBy');
+
+    return this.page(requests, query, [
+      'request.itemName',
+      'request.category',
+      'requestedBy.name',
+      'requestedBy.email',
+    ]);
+  }
+
+  // Status filter, LIKE search over the given columns, sort and one page.
+  private page(
+    requests: SelectQueryBuilder<AssetRequest>,
+    query: AssetRequestQueryDto,
+    searchColumns: string[],
+  ) {
+    if (query.status) {
+      requests.andWhere('request.status = :status', { status: query.status });
+    }
+
+    if (query.search) {
+      requests.andWhere(
+        `(${searchColumns.map((column) => `${column} LIKE :search`).join(' OR ')})`,
+        { search: `%${query.search}%` },
+      );
+    }
+
+    return paginate(requests, query, `request.${query.sort}`);
   }
 
   // Approve or reject an asset request.
@@ -160,7 +201,7 @@ export class AssetRequestsService {
     }
 
     if (request.status !== AssetRequestStatus.PENDING) {
-      throw new BadRequestException(
+      throw new ConflictException(
         'This request has already been reviewed.',
       );
     }
@@ -184,73 +225,80 @@ export class AssetRequestsService {
     request.reviewedBy = reviewer;
     request.adminNote = adminNote?.trim() || null;
 
-    // Conditional update: of two admins reviewing at once, only one wins (SEC-09).
-    const claim = await this.requestRepository.update(
-      { id: request.id, status: AssetRequestStatus.PENDING },
-      {
-        status: request.status,
-        reviewedBy: { id: reviewer.id },
-        adminNote: request.adminNote,
-      },
-    );
-
-    if (claim.affected !== 1) {
-      throw new BadRequestException(
-        'This request has already been reviewed.',
+    // Claim, log and notify in one transaction so they commit or roll back together (SEC-14).
+    await this.requestRepository.manager.transaction(async (manager) => {
+      // Conditional update: of two admins reviewing at once, only one wins (SEC-09).
+      const claim = await manager.getRepository(AssetRequest).update(
+        { id: request.id, status: AssetRequestStatus.PENDING },
+        {
+          status: request.status,
+          reviewedBy: { id: reviewer.id },
+          adminNote: request.adminNote,
+        },
       );
-    }
 
-    const isApproved = status === AssetRequestStatus.APPROVED;
+      if (claim.affected !== 1) {
+        throw new ConflictException(
+          'This request has already been reviewed.',
+        );
+      }
 
-    const decision = isApproved ? 'approved' : 'rejected';
+      const isApproved = status === AssetRequestStatus.APPROVED;
 
-    // Record the approval or rejection activity.
-    await this.activityLogsService.createLog({
-      actorId: reviewer.id,
-      action: isApproved
-        ? 'ASSET_REQUEST_APPROVED'
-        : 'ASSET_REQUEST_REJECTED',
-      entityType: 'asset_request',
-      entityId: request.id,
-      description: `${reviewer.name} ${decision} the asset request for ${request.itemName} submitted by ${request.requestedBy.name}.`,
-      metadata: {
-        requestId: request.id,
-        itemName: request.itemName,
-        category: request.category,
-        previousStatus,
-        newStatus: request.status,
-        adminNote: request.adminNote,
-        requestedBy: {
-          id: request.requestedBy.id,
-          name: request.requestedBy.name,
+      const decision = isApproved ? 'approved' : 'rejected';
+
+      // Record the approval or rejection activity.
+      await this.activityLogsService.createLog(
+        {
+          actorId: reviewer.id,
+          action: isApproved
+            ? 'ASSET_REQUEST_APPROVED'
+            : 'ASSET_REQUEST_REJECTED',
+          entityType: 'asset_request',
+          entityId: request.id,
+          description: `${reviewer.name} ${decision} the asset request for ${request.itemName} submitted by ${request.requestedBy.name}.`,
+          metadata: {
+            requestId: request.id,
+            itemName: request.itemName,
+            category: request.category,
+            previousStatus,
+            newStatus: request.status,
+            adminNote: request.adminNote,
+            requestedBy: {
+              id: request.requestedBy.id,
+              name: request.requestedBy.name,
+            },
+            reviewedBy: {
+              id: reviewer.id,
+              name: reviewer.name,
+            },
+          },
         },
-        reviewedBy: {
-          id: reviewer.id,
-          name: reviewer.name,
-        },
-      },
+        manager,
+      );
+
+      // Notify the employee who submitted the request.
+      const title = isApproved
+        ? 'Asset Request Approved'
+        : 'Asset Request Rejected';
+
+      let message = `Your request for ${request.itemName} has been ${decision}.`;
+
+      if (request.adminNote) {
+        message += ` Admin note: ${request.adminNote}`;
+      }
+
+      await this.notificationsService.createNotification(
+        request.requestedBy.id,
+        title,
+        message,
+        isApproved
+          ? 'asset_request_approved'
+          : 'asset_request_rejected',
+        request.id,
+        manager,
+      );
     });
-
-    // Notify the employee who submitted the request.
-    const title = isApproved
-      ? 'Asset Request Approved'
-      : 'Asset Request Rejected';
-
-    let message = `Your request for ${request.itemName} has been ${decision}.`;
-
-    if (request.adminNote) {
-      message += ` Admin note: ${request.adminNote}`;
-    }
-
-    await this.notificationsService.createNotification(
-      request.requestedBy.id,
-      title,
-      message,
-      isApproved
-        ? 'asset_request_approved'
-        : 'asset_request_rejected',
-      request.id,
-    );
 
     return this.requestRepository.findOne({
       where: { id: requestId },

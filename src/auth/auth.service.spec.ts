@@ -7,6 +7,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
 import * as bcrypt from 'bcrypt';
+import { DataSource, EntityManager } from 'typeorm';
 
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { User } from '../users/user.entity';
@@ -43,6 +44,11 @@ describe('AuthService', () => {
     startSession: jest.fn(),
     endAllSessions: jest.fn(),
   };
+  // Runs the transaction callback at once with a stand-in manager.
+  const manager = {} as EntityManager;
+  const dataSource = {
+    transaction: (work: (m: EntityManager) => Promise<unknown>) => work(manager),
+  } as unknown as DataSource;
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -60,6 +66,7 @@ describe('AuthService', () => {
         },
         { provide: RefreshTokensService, useValue: refreshTokens },
         { provide: ActivityLogsService, useValue: { createLog: jest.fn() } },
+        { provide: DataSource, useValue: dataSource },
         { provide: ConfigService, useValue: { get: () => 4 } },
       ],
     }).compile();
@@ -108,8 +115,8 @@ describe('AuthService', () => {
 
     await service.setActive(actor('admin'), 2, false);
 
-    expect(setActive).toHaveBeenCalledWith(2, false);
-    expect(refreshTokens.endAllSessions).toHaveBeenCalledWith(2);
+    expect(setActive).toHaveBeenCalledWith(2, false, manager);
+    expect(refreshTokens.endAllSessions).toHaveBeenCalledWith(2, manager);
   });
 
   it('answers a wrong current password with 400, not 401', async () => {
@@ -132,8 +139,13 @@ describe('AuthService', () => {
       );
 
       expect(temporaryPassword.length).toBeGreaterThanOrEqual(16);
-      expect(users.setPassword).toHaveBeenCalledWith(2, temporaryPassword, true);
-      expect(refreshTokens.endAllSessions).toHaveBeenCalledWith(2);
+      expect(users.setPassword).toHaveBeenCalledWith(
+        2,
+        temporaryPassword,
+        true,
+        manager,
+      );
+      expect(refreshTokens.endAllSessions).toHaveBeenCalledWith(2, manager);
     });
 
     it.each([
