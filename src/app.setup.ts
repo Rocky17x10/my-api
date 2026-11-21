@@ -1,6 +1,8 @@
 import { INestApplication, RequestMethod, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import cookieParser from 'cookie-parser';
 
+import { originCheck } from './auth/origin-check';
 import { EnvironmentVariables, parseOrigins } from './config/env.validation';
 
 export const API_PREFIX = 'api/v1';
@@ -17,9 +19,11 @@ export function setupApp(app: INestApplication): void {
     ],
   });
 
-  app.enableCors({
-    origin: parseOrigins(config.get('FRONTEND_URL', { infer: true })),
-  });
+  const origins = parseOrigins(config.get('FRONTEND_URL', { infer: true }));
+  // Auth travels in HttpOnly cookies, so browsers must send credentials cross-origin.
+  app.enableCors({ origin: origins, credentials: true });
+  app.use(cookieParser());
+  app.use(originCheck(origins));
 
   app.useGlobalPipes(
     new ValidationPipe({

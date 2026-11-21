@@ -42,6 +42,27 @@ export class UsersService {
     });
   }
 
+  // Session checks: null instead of 404, so a deleted user gets 401.
+  findById(id: number): Promise<User | null> {
+    return this.usersRepository.findOneBy({ id });
+  }
+
+  /** mustChange: true when an admin chose the password (the user must replace it). */
+  async setPassword(
+    id: number,
+    password: string,
+    mustChange: boolean,
+  ): Promise<void> {
+    const hash = await bcrypt.hash(
+      password,
+      this.config.get('BCRYPT_SALT_ROUNDS', { infer: true }),
+    );
+    await this.usersRepository.update(id, {
+      password: hash,
+      mustChangePassword: mustChange,
+    });
+  }
+
   // GET /users/:id
   async findOne(id: number): Promise<User> {
     const user = await this.usersRepository.findOneBy({ id });
@@ -73,6 +94,8 @@ export class UsersService {
       password: hashedPassword,
       department: department || null,
       designation: designation || null,
+      // The admin knows this password, so the employee must replace it (SEC-04).
+      mustChangePassword: true,
     });
 
     const savedUser = await this.usersRepository.save(user);

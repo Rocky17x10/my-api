@@ -4,9 +4,10 @@ import {
   IsNotEmpty,
   IsString,
   MaxLength,
-  MinLength,
   IsOptional,
 } from 'class-validator';
+
+import { IsAcceptablePassword } from '../auth/password.policy';
 
 export class CreateUserDto {
   @IsString()
@@ -19,10 +20,7 @@ export class CreateUserDto {
   @MaxLength(150)
   email: string;
 
-  @IsString()
-  @IsNotEmpty()
-  @MinLength(8)
-  @MaxLength(72)
+  @IsAcceptablePassword()
   password: string;
 
   @IsOptional()

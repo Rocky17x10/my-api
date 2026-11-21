@@ -55,9 +55,19 @@ export class EnvironmentVariables {
   @MinLength(32)
   JWT_ACCESS_SECRET!: string;
 
-  @IsString()
-  @IsNotEmpty()
-  JWT_ACCESS_EXPIRES_IN = '1h';
+  /** Access token (JWT) and its cookie live this long; the refresh token renews it. */
+  @Transform(({ value }) => Number(value))
+  @IsInt()
+  @Min(1)
+  @Max(60)
+  JWT_ACCESS_TTL_MINUTES = 15;
+
+  /** Refresh token lifetime; each refresh starts a new one (sliding session). */
+  @Transform(({ value }) => Number(value))
+  @IsInt()
+  @Min(1)
+  @Max(30)
+  REFRESH_TOKEN_TTL_DAYS = 7;
 
   /** Comma-separated list of origins allowed by CORS. */
   @IsString()

@@ -46,4 +46,9 @@ export class User {
     default: 'user',
   })
   role: UserRole;
+
+  // Set when an admin chose the password (create or reset); the API then only
+  // allows changing it (JwtAuthGuard).
+  @Column({ name: 'must_change_password', default: false })
+  mustChangePassword: boolean;
 }

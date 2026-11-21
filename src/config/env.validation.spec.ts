@@ -18,7 +18,8 @@ describe('validateEnv', () => {
     expect(env.DATABASE_HOST).toBe('localhost');
     expect(env.DATABASE_PORT).toBe(3306);
     expect(env.BCRYPT_SALT_ROUNDS).toBe(12);
-    expect(env.JWT_ACCESS_EXPIRES_IN).toBe('1h');
+    expect(env.JWT_ACCESS_TTL_MINUTES).toBe(15);
+    expect(env.REFRESH_TOKEN_TTL_DAYS).toBe(7);
   });
 
   it('converts numeric strings from .env', () => {
