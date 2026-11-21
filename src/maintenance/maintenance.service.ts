@@ -232,9 +232,10 @@ export class MaintenanceService {
       maintenance.completionDate = new Date();
       maintenance.status = 'completed';
 
-      asset.status = 'available';
-
-      await assetRepository.save(asset);
+      if (asset.status === 'maintenance') {
+        asset.status = 'available';
+        await assetRepository.save(asset);
+      }
       await maintenanceRepository.save(maintenance);
 
       const record = await maintenanceRepository.findOne({
@@ -289,7 +290,8 @@ export class MaintenanceService {
         assetId: record.asset.id,
         assetName: record.asset.name,
         assetPreviousStatus: 'maintenance',
-        assetNewStatus: 'available',
+        // Only an asset still in maintenance is freed (SEC-10); report what really happened.
+        assetNewStatus: record.asset.status,
       },
     });
 

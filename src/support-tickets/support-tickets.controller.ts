@@ -15,7 +15,7 @@ import { SupportTicketsService } from './support-tickets.service';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
-import { Roles } from '../auth/roles.decorator';
+import { AnyRole, Roles } from '../auth/roles.decorator';
 import { UserRole } from '../users/user.entity';
 
 import { CreateSupportTicketDto } from './dto/create-support-ticket.dto';
@@ -39,6 +39,7 @@ export class SupportTicketsController {
 
   // Create a new support ticket
   @Post()
+  @AnyRole()
   async create(
     @Req() req: AuthenticatedRequest,
     @Body() data: CreateSupportTicketDto,
@@ -51,6 +52,7 @@ export class SupportTicketsController {
 
   // Employee: View own tickets
   @Get('my')
+  @AnyRole()
   async findMyTickets(
     @Req() req: AuthenticatedRequest,
   ) {
@@ -68,6 +70,7 @@ export class SupportTicketsController {
 
   // View one ticket (owner or admin)
   @Get(':id')
+  @AnyRole()
   async findOne(
     @Param('id', ParseIntPipe) id: number,
     @Req() req: AuthenticatedRequest,
@@ -85,6 +88,7 @@ export class SupportTicketsController {
 
   // Employee or Admin: Add a reply
   @Post(':id/messages')
+  @AnyRole()
   async addMessage(
     @Param('id', ParseIntPipe) id: number,
     @Req() req: AuthenticatedRequest,

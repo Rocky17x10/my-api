@@ -172,21 +172,18 @@ export class AssetReturnsService {
   }
 
   // EMPLOYEE: View own return requests
+  // The reviewer comes back as id + name only (SEC-13).
   async findMyReturns(userId: number) {
-    return this.assetReturnRepository.find({
-      where: {
-        requestedBy: { id: userId },
-      },
-      relations: {
-        asset: true,
-        assignmentHistory: true,
-        requestedBy: true,
-        reviewedBy: true,
-      },
-      order: {
-        requestedAt: 'DESC',
-      },
-    });
+    return this.assetReturnRepository
+      .createQueryBuilder('assetReturn')
+      .leftJoinAndSelect('assetReturn.asset', 'asset')
+      .leftJoinAndSelect('assetReturn.assignmentHistory', 'assignmentHistory')
+      .leftJoinAndSelect('assetReturn.requestedBy', 'requestedBy')
+      .leftJoin('assetReturn.reviewedBy', 'reviewedBy')
+      .addSelect(['reviewedBy.id', 'reviewedBy.name'])
+      .where('requestedBy.id = :userId', { userId })
+      .orderBy('assetReturn.requestedAt', 'DESC')
+      .getMany();
   }
 
   // ADMIN: View all return requests
@@ -309,6 +306,11 @@ export class AssetReturnsService {
             throw new NotFoundException('Admin not found');
           }
 
+          // Separation of duties (D3): an admin's own return is reviewed by another admin.
+          if (request.requestedBy.id === admin.id) {
+            throw new ForbiddenException('You cannot review your own return.');
+          }
+
           // Lock the asset
           const asset = await assetRepo.findOne({
             where: { id: request.asset.id },
@@ -349,7 +351,7 @@ export class AssetReturnsService {
             await historyRepo.save(history);
 
             // Update asset
-            asset.assignedTo = null as any;
+            asset.assignedTo = null;
 
             asset.status =
               data.condition === 'good'

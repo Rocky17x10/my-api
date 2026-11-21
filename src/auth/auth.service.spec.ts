@@ -81,6 +81,7 @@ describe('AuthService', () => {
       id: 7,
       password,
       role: 'user',
+      isActive: true,
     } as User);
 
     const session = await service.login('a@example.com', 'correct horse');
@@ -88,6 +89,27 @@ describe('AuthService', () => {
     expect(session.accessToken).toBe('jwt');
     expect(session.user).not.toHaveProperty('password');
     expect(refreshTokens.startSession).toHaveBeenCalledWith(7);
+  });
+
+  it('refuses a deactivated account even with the right password', async () => {
+    const password = await bcrypt.hash('correct horse', 4);
+    users.findByEmail.mockResolvedValue({ id: 7, password, isActive: false } as User);
+
+    await expect(service.login('a@example.com', 'correct horse')).rejects.toThrow(
+      ForbiddenException,
+    );
+    expect(refreshTokens.startSession).not.toHaveBeenCalled();
+  });
+
+  it('deactivation ends every session of the account', async () => {
+    users.findOne.mockResolvedValue({ id: 2, role: 'user', name: 'E', email: 'e@x.co' } as User);
+    const setActive = jest.fn();
+    Object.assign(users, { setActive });
+
+    await service.setActive(actor('admin'), 2, false);
+
+    expect(setActive).toHaveBeenCalledWith(2, false);
+    expect(refreshTokens.endAllSessions).toHaveBeenCalledWith(2);
   });
 
   it('answers a wrong current password with 400, not 401', async () => {
@@ -137,7 +159,7 @@ describe('AuthService', () => {
       users.findOne.mockResolvedValue({ id: 1, role: 'admin' } as User);
 
       await expect(service.resetPassword(actor('admin', 1), 1)).rejects.toThrow(
-        BadRequestException,
+        ForbiddenException,
       );
     });
   });

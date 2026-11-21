@@ -41,7 +41,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   // Reloads the user on every request, so deletions and role changes apply at once.
   async validate(payload: JwtPayload): Promise<AuthUser> {
     const user = await this.usersService.findById(payload.sub);
-    if (!user) throw new UnauthorizedException();
+    if (!user?.isActive) throw new UnauthorizedException();
 
     return {
       userId: user.id,

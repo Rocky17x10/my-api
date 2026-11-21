@@ -51,4 +51,8 @@ export class User {
   // allows changing it (JwtAuthGuard).
   @Column({ name: 'must_change_password', default: false })
   mustChangePassword: boolean;
+
+  // Deactivated users cannot log in and their sessions end; their history stays intact.
+  @Column({ name: 'is_active', default: true })
+  isActive: boolean;
 }

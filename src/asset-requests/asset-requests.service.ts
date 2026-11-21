@@ -2,6 +2,7 @@
 import {
   Injectable,
   BadRequestException,
+  ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
 
@@ -113,12 +114,16 @@ export class AssetRequestsService {
   }
 
   // Get requests submitted by the logged-in employee.
+  // The reviewer comes back as id + name only (SEC-13).
   async findMyRequests(userId: number) {
-    return this.requestRepository.find({
-      where: { requestedBy: { id: userId } },
-      relations: { requestedBy: true, reviewedBy: true },
-      order: { createdAt: 'DESC' },
-    });
+    return this.requestRepository
+      .createQueryBuilder('request')
+      .leftJoinAndSelect('request.requestedBy', 'requestedBy')
+      .leftJoin('request.reviewedBy', 'reviewedBy')
+      .addSelect(['reviewedBy.id', 'reviewedBy.name'])
+      .where('requestedBy.id = :userId', { userId })
+      .orderBy('request.createdAt', 'DESC')
+      .getMany();
   }
 
   // Get all asset requests.
@@ -160,6 +165,11 @@ export class AssetRequestsService {
       );
     }
 
+    // Separation of duties (D3): nobody approves their own request.
+    if (request.requestedBy.id === reviewerId) {
+      throw new ForbiddenException('You cannot review your own request.');
+    }
+
     const reviewer = await this.userRepository.findOneBy({
       id: reviewerId,
     });
@@ -174,7 +184,21 @@ export class AssetRequestsService {
     request.reviewedBy = reviewer;
     request.adminNote = adminNote?.trim() || null;
 
-    await this.requestRepository.save(request);
+    // Conditional update: of two admins reviewing at once, only one wins (SEC-09).
+    const claim = await this.requestRepository.update(
+      { id: request.id, status: AssetRequestStatus.PENDING },
+      {
+        status: request.status,
+        reviewedBy: { id: reviewer.id },
+        adminNote: request.adminNote,
+      },
+    );
+
+    if (claim.affected !== 1) {
+      throw new BadRequestException(
+        'This request has already been reviewed.',
+      );
+    }
 
     const isApproved = status === AssetRequestStatus.APPROVED;
 

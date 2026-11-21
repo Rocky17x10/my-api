@@ -4,6 +4,7 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
 } from '@nestjs/common';
 
 import { InjectRepository } from '@nestjs/typeorm';
@@ -14,6 +15,8 @@ import { AssetAssignmentHistory } from './asset-assignment-history.entity';
 import { User } from '../users/user.entity';
 import { Notification } from '../support-tickets/notification.entity';
 import { ActivityLog } from '../activity-logs/activity-log.entity';
+import { Maintenance } from '../maintenance/maintenance.entity';
+import { CreateAssetDto, UpdateAssetDto } from './dto/asset.dto';
 
 @Injectable()
 export class AssetsService {
@@ -102,54 +105,24 @@ export class AssetsService {
       );
     }
 
-    return this.historyRepository.find({
-      where: {
-        assignedTo: {
-          id: employeeId,
-        },
-      },
-      relations: {
-        asset: true,
-        assignedTo: true,
-        assignedBy: true,
-      },
-      order: {
-        id: 'DESC',
-      },
-    });
+    // Employees read this too: the assigning admin is id + name only (SEC-13).
+    return this.historyRepository
+      .createQueryBuilder('history')
+      .leftJoinAndSelect('history.asset', 'asset')
+      .leftJoinAndSelect('history.assignedTo', 'assignedTo')
+      .leftJoin('history.assignedBy', 'assignedBy')
+      .addSelect(['assignedBy.id', 'assignedBy.name'])
+      .where('assignedTo.id = :employeeId', { employeeId })
+      .orderBy('history.id', 'DESC')
+      .getMany();
   }
 
   // Create an asset and record activity
   async create(
-    assetData: any,
+    dto: CreateAssetDto,
     adminId: number,
   ): Promise<Asset> {
-    if (
-      Object.prototype.hasOwnProperty.call(
-        assetData,
-        'assignedTo',
-      )
-    ) {
-      throw new BadRequestException(
-        'Assets cannot be assigned during creation. Use the Assign API.',
-      );
-    }
-
-    const status = assetData.status ?? 'available';
-
-    if (status === 'assigned') {
-      throw new BadRequestException(
-        'Assets cannot be created with Assigned status. Use the Assign API.',
-      );
-    }
-
-    if (
-      !['available', 'maintenance', 'retired'].includes(status)
-    ) {
-      throw new BadRequestException(
-        'Invalid asset status.',
-      );
-    }
+    const status = dto.status ?? 'available';
 
     if (
       !Number.isInteger(adminId) ||
@@ -175,7 +148,7 @@ export class AssetsService {
 
         const asset = new Asset();
 
-        Object.assign(asset, assetData);
+        Object.assign(asset, dto);
 
         asset.status = status;
         asset.assignedTo = null;
@@ -218,7 +191,7 @@ export class AssetsService {
   // Update an asset and record activity
   async update(
     id: number,
-    assetData: any,
+    dto: UpdateAssetDto,
     adminId: number,
   ): Promise<Asset> {
     if (
@@ -248,36 +221,13 @@ export class AssetsService {
           );
         }
 
-        if (
-          Object.prototype.hasOwnProperty.call(
-            assetData,
-            'assignedTo',
-          )
-        ) {
-          throw new BadRequestException(
-            'Assigned employee cannot be changed through asset editing. Use the Assign or Unassign API.',
-          );
-        }
+        // The edit form sends the current status back, so only a change is checked.
+        const newStatus = dto.status ?? asset.status;
 
-        if (assetData.status === 'assigned') {
-          throw new BadRequestException(
-            'Assigned status can only be set through the Assign API.',
-          );
-        }
-
-        if (
-          Object.prototype.hasOwnProperty.call(
-            assetData,
-            'status',
-          )
-        ) {
-          if (
-            !['available', 'maintenance', 'retired'].includes(
-              assetData.status,
-            )
-          ) {
+        if (newStatus !== asset.status) {
+          if (newStatus === 'assigned') {
             throw new BadRequestException(
-              'Invalid asset status.',
+              'Assigned status can only be set through the Assign API.',
             );
           }
 
@@ -287,6 +237,17 @@ export class AssetsService {
           ) {
             throw new BadRequestException(
               'Please unassign this asset before changing its status.',
+            );
+          }
+
+          // SEC-10: the open maintenance record decides when the asset leaves maintenance.
+          const underMaintenance = await manager.exists(Maintenance, {
+            where: { asset: { id: asset.id }, status: 'in_progress' },
+          });
+
+          if (underMaintenance) {
+            throw new ConflictException(
+              'Complete the open maintenance record before changing the status.',
             );
           }
         }
@@ -312,9 +273,8 @@ export class AssetsService {
           department: asset.department,
         };
 
-        const { assignedTo, ...otherAssetData } = assetData;
-
-        Object.assign(asset, otherAssetData);
+        Object.assign(asset, dto);
+        asset.status = newStatus;
 
         const savedAsset = await manager.save(
           Asset,
@@ -333,7 +293,7 @@ export class AssetsService {
               assetTag: savedAsset.assetTag,
               assetName: savedAsset.name,
               previousValues,
-              updatedValues: assetData,
+              updatedValues: dto,
               updatedById: admin.id,
               updatedByName: admin.name,
             },
@@ -354,17 +314,22 @@ export class AssetsService {
   // notify the employee, and record activity.
   async assignAsset(
     assetId: number,
-    userId: number | string,
+    employeeId: number,
     adminId: number,
   ): Promise<Asset> {
-    const employeeId = Number(userId);
-
     if (
       !Number.isInteger(employeeId) ||
       employeeId <= 0
     ) {
       throw new BadRequestException(
         'Invalid employee ID.',
+      );
+    }
+
+    // Separation of duties (D3): an administrator's own equipment is handed out by another one.
+    if (employeeId === adminId) {
+      throw new ForbiddenException(
+        'You cannot assign an asset to yourself. Ask another administrator.',
       );
     }
 
@@ -413,6 +378,10 @@ export class AssetsService {
           throw new NotFoundException(
             `Employee with ID ${employeeId} not found.`,
           );
+        }
+
+        if (!employee.isActive) {
+          throw new BadRequestException('This account is deactivated.');
         }
 
         const admin = await manager.findOneBy(

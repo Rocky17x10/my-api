@@ -21,6 +21,7 @@ import type { UserRole } from './user.entity';
 
 import { CreateUserDto } from './create-user.dto';
 import { UpdateUserDto } from './update-user.dto';
+import { ChangeRoleDto } from './dto/change-role.dto';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -96,7 +97,7 @@ export class UsersController {
       updateUserDto.email,
       updateUserDto.department,
       updateUserDto.designation,
-      req.user.userId,
+      req.user,
     );
   }
 
@@ -106,18 +107,12 @@ export class UsersController {
   @Roles('super_admin')
   changeRole(
     @Param('id', ParseIntPipe) id: number,
-    @Body('role') role: string,
+    @Body() dto: ChangeRoleDto,
     @Req() req: AuthenticatedRequest,
   ): Promise<User> {
-    if (role !== 'admin' && role !== 'user') {
-      throw new BadRequestException(
-        'Role must be either admin or user.',
-      );
-    }
-
     return this.usersService.changeRole(
       id,
-      role as UserRole,
+      dto.role,
       req.user.userId,
     );
   }
@@ -130,7 +125,7 @@ export class UsersController {
   ): Promise<{ message: string }> {
     return this.usersService.remove(
       id,
-      req.user.userId,
+      req.user,
     );
   }
 }

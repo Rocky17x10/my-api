@@ -7,6 +7,7 @@ import { Asset } from '../assets/asset.entity';
 import { User } from '../users/user.entity';
 import { AssetAssignmentHistory } from '../assets/asset-assignment-history.entity';
 import { Maintenance } from '../maintenance/maintenance.entity';
+import { ReportQueryDto } from './dto/report-query.dto';
 
 @Injectable()
 export class ReportsService {
@@ -25,7 +26,7 @@ export class ReportsService {
   ) {}
 
   // 1. Complete Asset Report
-  async getAssets(query: Record<string, string>) {
+  async getAssets(query: ReportQueryDto) {
     const qb = this.assetRepository
       .createQueryBuilder('asset')
       .leftJoinAndSelect('asset.assignedTo', 'assignedTo')
@@ -168,7 +169,7 @@ export class ReportsService {
   }
 
   // 4. Assigned Asset Report
-  async getAssignedAssets(query: Record<string, string>) {
+  async getAssignedAssets(query: ReportQueryDto) {
     const qb = this.assetRepository
       .createQueryBuilder('asset')
       .leftJoinAndSelect('asset.assignedTo', 'assignedTo')
@@ -198,7 +199,7 @@ export class ReportsService {
   }
 
   // 5. Available Asset Report
-  async getAvailableAssets(query: Record<string, string>) {
+  async getAvailableAssets(query: ReportQueryDto) {
     const qb = this.assetRepository
       .createQueryBuilder('asset')
       .where('asset.status = :status', { status: 'available' })
@@ -221,7 +222,7 @@ export class ReportsService {
   }
 
   // 6. Maintenance Report
-  async getMaintenance(query: Record<string, string>) {
+  async getMaintenance(query: ReportQueryDto) {
     const qb = this.maintenanceRepository
       .createQueryBuilder('maintenance')
       .leftJoinAndSelect('maintenance.asset', 'asset')

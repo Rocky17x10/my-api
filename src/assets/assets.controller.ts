@@ -15,10 +15,11 @@ import {
 import type { Request } from 'express';
 
 import { AssetsService } from './assets.service';
+import { AssignAssetDto, CreateAssetDto, UpdateAssetDto } from './dto/asset.dto';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
-import { Roles } from '../auth/roles.decorator';
+import { AnyRole, Roles } from '../auth/roles.decorator';
 
 interface AuthenticatedRequest extends Request {
   user: {
@@ -37,6 +38,7 @@ export class AssetsController {
 
   // Get all assets
   @Get()
+  @AnyRole()
   findAll(@Req() req: AuthenticatedRequest) {
     const { userId, role } = req.user;
 
@@ -58,6 +60,7 @@ export class AssetsController {
 
   // Get assignment history of a specific employee
   @Get('history/employee/:employeeId')
+  @AnyRole()
   findEmployeeHistory(
     @Param('employeeId', ParseIntPipe) employeeId: number,
     @Req() req: AuthenticatedRequest,
@@ -82,11 +85,11 @@ export class AssetsController {
   @Post()
   @Roles('super_admin', 'admin')
   create(
-    @Body() assetData: any,
+    @Body() dto: CreateAssetDto,
     @Req() req: AuthenticatedRequest,
   ) {
     return this.assetsService.create(
-      assetData,
+      dto,
       req.user.userId,
     );
   }
@@ -96,12 +99,12 @@ export class AssetsController {
   @Roles('super_admin', 'admin')
   update(
     @Param('id', ParseIntPipe) id: number,
-    @Body() assetData: any,
+    @Body() dto: UpdateAssetDto,
     @Req() req: AuthenticatedRequest,
   ) {
     return this.assetsService.update(
       id,
-      assetData,
+      dto,
       req.user.userId,
     );
   }
@@ -111,12 +114,12 @@ export class AssetsController {
   @Roles('super_admin', 'admin')
   assignAsset(
     @Param('id', ParseIntPipe) id: number,
-    @Body('userId') userId: number,
+    @Body() dto: AssignAssetDto,
     @Req() req: AuthenticatedRequest,
   ) {
     return this.assetsService.assignAsset(
       id,
-      userId,
+      dto.userId,
       req.user.userId,
     );
   }

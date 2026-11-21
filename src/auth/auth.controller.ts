@@ -27,6 +27,7 @@ import {
 import { AuthService, Session, SessionUser } from './auth.service';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { LoginDto } from './dto/login.dto';
+import { SetActiveDto } from './dto/set-active.dto';
 import { AllowPendingPasswordChange, JwtAuthGuard } from './jwt-auth.guard';
 import type { AuthUser } from './jwt.strategy';
 import { Roles } from './roles.decorator';
@@ -122,6 +123,17 @@ export class AuthController {
     @Req() req: AuthenticatedRequest,
   ): Promise<{ temporaryPassword: string }> {
     return this.authService.resetPassword(req.user, id);
+  }
+
+  @Patch('users/:id/active')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('super_admin', 'admin')
+  setActive(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: SetActiveDto,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<{ id: number; isActive: boolean }> {
+    return this.authService.setActive(req.user, id, dto.active);
   }
 
   private respond(res: Response, session: Session): { user: SessionUser } {

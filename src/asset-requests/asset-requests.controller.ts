@@ -14,7 +14,14 @@ import {
 import { AssetRequestsService } from './asset-requests.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
-import { Roles } from '../auth/roles.decorator';
+import { AnyRole, Roles } from '../auth/roles.decorator';
+import type { AuthUser } from '../auth/jwt.strategy';
+
+type AuthenticatedRequest = { user: AuthUser };
+import {
+  CreateAssetRequestDto,
+  ReviewAssetRequestDto,
+} from './dto/asset-request.dto';
 
 @Controller('asset-requests')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -25,14 +32,10 @@ export class AssetRequestsController {
 
   // Employees submit a new request
   @Post()
+  @AnyRole()
   create(
-    @Req() req: any,
-    @Body()
-    body: {
-      itemName: string;
-      category: string;
-      reason: string;
-    },
+    @Req() req: AuthenticatedRequest,
+    @Body() body: CreateAssetRequestDto,
   ) {
     return this.assetRequestsService.create(
       req.user.userId,
@@ -42,7 +45,8 @@ export class AssetRequestsController {
 
   // Employees view their own requests
   @Get('my')
-  findMyRequests(@Req() req: any) {
+  @AnyRole()
+  findMyRequests(@Req() req: AuthenticatedRequest) {
     return this.assetRequestsService.findMyRequests(
       req.user.userId,
     );
@@ -60,12 +64,8 @@ export class AssetRequestsController {
   @Roles('super_admin', 'admin')
   review(
     @Param('id', ParseIntPipe) id: number,
-    @Req() req: any,
-    @Body()
-    body: {
-      status: string;
-      adminNote?: string;
-    },
+    @Req() req: AuthenticatedRequest,
+    @Body() body: ReviewAssetRequestDto,
   ) {
     return this.assetRequestsService.review(
       id,

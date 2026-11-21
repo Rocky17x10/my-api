@@ -4,6 +4,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 
 import { ConfigService } from '@nestjs/config';
@@ -13,6 +14,8 @@ import * as bcrypt from 'bcrypt';
 
 import { User, UserRole } from './user.entity';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { ActivityLog } from '../activity-logs/activity-log.entity';
+import { accountChangeDenied } from './account-rules';
 import { EnvironmentVariables } from '../config/env.validation';
 
 @Injectable()
@@ -61,6 +64,10 @@ export class UsersService {
       password: hash,
       mustChangePassword: mustChange,
     });
+  }
+
+  async setActive(id: number, active: boolean): Promise<void> {
+    await this.usersRepository.update(id, { isActive: active });
   }
 
   // GET /users/:id
@@ -127,15 +134,14 @@ export class UsersService {
     email: string | undefined,
     department: string | undefined,
     designation: string | undefined,
-    actorId: number,
+    actor: { userId: number; role: UserRole },
   ): Promise<User> {
+    const actorId = actor.userId;
     const user = await this.findOne(id);
 
-    // Protect the Super Admin account
-    if (user.role === 'super_admin') {
-      throw new ForbiddenException(
-        'The Super Admin account cannot be modified.',
-      );
+    const denied = accountChangeDenied(actor, user);
+    if (denied) {
+      throw new ForbiddenException(denied);
     }
 
     const previousValues = {
@@ -234,14 +240,23 @@ export class UsersService {
   // DELETE /users/:id
   async remove(
     id: number,
-    actorId: number,
+    actor: { userId: number; role: UserRole },
   ): Promise<{ message: string }> {
+    const actorId = actor.userId;
     const user = await this.findOne(id);
 
-    // Never allow deletion of the Super Admin account
-    if (user.role === 'super_admin') {
-      throw new ForbiddenException(
-        'The Super Admin account cannot be deleted.',
+    const denied = accountChangeDenied(actor, user);
+    if (denied) {
+      throw new ForbiddenException(denied);
+    }
+
+    // Deleting would blank the actor of their audit-log entries (FK SET NULL).
+    const hasHistory = await this.usersRepository.manager.exists(ActivityLog, {
+      where: { actor: { id: user.id } },
+    });
+    if (hasHistory) {
+      throw new ConflictException(
+        'This account has activity history and cannot be deleted. Deactivate it instead.',
       );
     }
 

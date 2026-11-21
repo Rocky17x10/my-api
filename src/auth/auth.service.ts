@@ -14,6 +14,7 @@ import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { EnvironmentVariables } from '../config/env.validation';
 import { User, UserRole } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
+import { accountChangeDenied } from '../users/account-rules';
 import type { AuthUser } from './jwt.strategy';
 import {
   IssuedRefreshToken,
@@ -73,13 +74,18 @@ export class AuthService {
     if (!user?.password || !valid) {
       throw new UnauthorizedException('Invalid email or password');
     }
+    if (!user.isActive) {
+      throw new ForbiddenException(
+        'This account is deactivated. Contact an administrator.',
+      );
+    }
     return this.startSession(user);
   }
 
   async refresh(refreshToken: string): Promise<Session> {
     const { userId, next } = await this.refreshTokens.rotate(refreshToken);
     const user = await this.usersService.findById(userId);
-    if (!user) throw new UnauthorizedException('Session expired');
+    if (!user?.isActive) throw new UnauthorizedException('Session expired');
 
     return {
       user: toSessionUser(user),
@@ -127,29 +133,14 @@ export class AuthService {
     return this.startSession(user);
   }
 
-  /**
-   * Admin reset: a one-time password the employee must replace at next login.
-   * Admins reset employees; only the super admin resets admins; nobody resets the super admin.
-   */
+  /** Admin reset: a one-time password the user must replace at next login. Rules: accountChangeDenied. */
   async resetPassword(
     actor: AuthUser,
     targetId: number,
   ): Promise<{ temporaryPassword: string }> {
     const target = await this.usersService.findOne(targetId);
-
-    if (target.id === actor.userId) {
-      throw new BadRequestException(
-        'Use change password for your own account.',
-      );
-    }
-    if (
-      target.role === 'super_admin' ||
-      (target.role === 'admin' && actor.role !== 'super_admin')
-    ) {
-      throw new ForbiddenException(
-        'You cannot reset the password of this account.',
-      );
-    }
+    const denied = accountChangeDenied(actor, target);
+    if (denied) throw new ForbiddenException(denied);
 
     const temporaryPassword = randomBytes(12).toString('base64url');
     await this.usersService.setPassword(target.id, temporaryPassword, true);
@@ -163,6 +154,29 @@ export class AuthService {
     });
 
     return { temporaryPassword };
+  }
+
+  /** Deactivated accounts cannot log in and their sessions end at once. Rules: accountChangeDenied. */
+  async setActive(
+    actor: AuthUser,
+    targetId: number,
+    active: boolean,
+  ): Promise<{ id: number; isActive: boolean }> {
+    const target = await this.usersService.findOne(targetId);
+    const denied = accountChangeDenied(actor, target);
+    if (denied) throw new ForbiddenException(denied);
+
+    await this.usersService.setActive(target.id, active);
+    if (!active) await this.refreshTokens.endAllSessions(target.id);
+    await this.activityLogs.createLog({
+      actorId: actor.userId,
+      action: active ? 'EMPLOYEE_ACTIVATED' : 'EMPLOYEE_DEACTIVATED',
+      entityType: 'employee',
+      entityId: target.id,
+      description: `${actor.name} ${active ? 'activated' : 'deactivated'} the account of ${target.name} (${target.email}).`,
+    });
+
+    return { id: target.id, isActive: active };
   }
 
   private async startSession(user: User): Promise<Session> {

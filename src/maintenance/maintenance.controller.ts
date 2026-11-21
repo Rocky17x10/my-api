@@ -10,6 +10,10 @@ import {
   ParseIntPipe,
 } from '@nestjs/common';
 
+import type { AuthUser } from '../auth/jwt.strategy';
+
+type AuthenticatedRequest = { user: AuthUser };
+
 import { MaintenanceService } from './maintenance.service';
 
 import {
@@ -30,7 +34,7 @@ export class MaintenanceController {
   ) {}
 
   @Post()
-  create(@Body() dto: CreateMaintenanceDto, @Req() req: any) {
+  create(@Body() dto: CreateMaintenanceDto, @Req() req: AuthenticatedRequest) {
     return this.maintenanceService.create(dto, req.user.userId);
   }
 
@@ -53,7 +57,7 @@ export class MaintenanceController {
   complete(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CompleteMaintenanceDto,
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
   ) {
     return this.maintenanceService.complete(
       id,

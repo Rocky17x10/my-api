@@ -140,12 +140,16 @@ export class SupportTicketsService {
     return this.findOne(savedTicket.id, userId, false);
   }
 
+  // The assigned admin comes back as id + name only (SEC-13).
   async findMyTickets(userId: number) {
-    return this.ticketRepository.find({
-      where: { createdBy: { id: userId } },
-      relations: { createdBy: true, assignedTo: true },
-      order: { createdAt: 'DESC' },
-    });
+    return this.ticketRepository
+      .createQueryBuilder('ticket')
+      .leftJoinAndSelect('ticket.createdBy', 'createdBy')
+      .leftJoin('ticket.assignedTo', 'assignedTo')
+      .addSelect(['assignedTo.id', 'assignedTo.name'])
+      .where('createdBy.id = :userId', { userId })
+      .orderBy('ticket.createdAt', 'DESC')
+      .getMany();
   }
 
   async findAll() {
@@ -155,16 +159,27 @@ export class SupportTicketsService {
     });
   }
 
+  // Employees never receive internal notes (SEC-06) and see staff as id + name only (SEC-13).
   async findOne(ticketId: number, userId: number, admin: boolean) {
-    const ticket = await this.ticketRepository.findOne({
-      where: { id: ticketId },
-      relations: {
-        createdBy: true,
-        assignedTo: true,
-        messages: { sender: true },
-      },
-      order: { messages: { createdAt: 'ASC' } },
-    });
+    const staff = (alias: string) =>
+      admin ? [alias] : [`${alias}.id`, `${alias}.name`];
+
+    const ticket = await this.ticketRepository
+      .createQueryBuilder('ticket')
+      .leftJoinAndSelect('ticket.createdBy', 'createdBy')
+      .leftJoin('ticket.assignedTo', 'assignedTo')
+      .addSelect(staff('assignedTo'))
+      .leftJoinAndSelect(
+        'ticket.messages',
+        'message',
+        admin ? undefined : 'message.isInternalNote = :internal',
+        { internal: false },
+      )
+      .leftJoin('message.sender', 'sender')
+      .addSelect(staff('sender'))
+      .where('ticket.id = :ticketId', { ticketId })
+      .orderBy('message.createdAt', 'ASC')
+      .getOne();
 
     if (!ticket) {
       throw new NotFoundException('Support ticket not found.');
