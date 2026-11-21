@@ -1,26 +1,16 @@
-
-import { ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+
 import { AppModule } from './app.module';
+import { setupApp } from './app.setup';
+import { EnvironmentVariables } from './config/env.validation';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  setupApp(app);
 
-  // Allow requests from the Next.js frontend
-  app.enableCors({
-    origin: 'http://localhost:3000',
-  });
-
-  // Validate incoming request data
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    }),
-  );
-
-  await app.listen(3001);
+  const config = app.get(ConfigService<EnvironmentVariables, true>);
+  await app.listen(config.get('PORT', { infer: true }));
 }
 
-bootstrap();
+void bootstrap();

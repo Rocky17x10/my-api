@@ -6,6 +6,8 @@ import { createObserveModule } from '@nestjs/observe';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { validateEnv } from './config/env.validation';
+import { databaseOptions } from './database/database.options';
 
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
@@ -24,23 +26,27 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      validate: validateEnv,
     }),
 
-    ObserveModule.forRoot({
-      appKey: 'YOUR_APP_KEY',
-      appSecret: 'YOUR_APP_SECRET',
-      serviceId: 'my-api',
-    }),
+    // forRoot above has already loaded .env into process.env; Observe is only
+    // registered when real credentials are configured.
+    ...(process.env.OBSERVE_APP_KEY && process.env.OBSERVE_APP_SECRET
+      ? [
+          ObserveModule.forRoot({
+            appKey: process.env.OBSERVE_APP_KEY,
+            appSecret: process.env.OBSERVE_APP_SECRET,
+            serviceId: 'my-api',
+          }),
+        ]
+      : []),
 
-    TypeOrmModule.forRoot({
-      type: 'mysql',
-      host: 'localhost',
-      port: 3306,
-      username: 'appuser',
-      password: process.env.DB_PASSWORD,
-      database: 'myapp_db',
-      autoLoadEntities: true,
-      synchronize: false,
+    TypeOrmModule.forRootAsync({
+      // ConfigModule.forRoot above has loaded and validated .env into process.env.
+      useFactory: () => ({
+        ...databaseOptions(validateEnv(process.env)),
+        autoLoadEntities: true,
+      }),
     }),
 
     UsersModule,

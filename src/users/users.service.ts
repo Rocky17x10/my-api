@@ -6,12 +6,14 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 
 import { User, UserRole } from './user.entity';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { EnvironmentVariables } from '../config/env.validation';
 
 @Injectable()
 export class UsersService {
@@ -20,6 +22,8 @@ export class UsersService {
     private readonly usersRepository: Repository<User>,
 
     private readonly activityLogsService: ActivityLogsService,
+
+    private readonly config: ConfigService<EnvironmentVariables, true>,
   ) {}
 
   // Find a user by email for authentication
@@ -58,7 +62,10 @@ export class UsersService {
     designation: string | undefined,
     actorId: number,
   ): Promise<User> {
-    const hashedPassword = await bcrypt.hash(password, 12);
+    const hashedPassword = await bcrypt.hash(
+      password,
+      this.config.get('BCRYPT_SALT_ROUNDS', { infer: true }),
+    );
 
     const user = this.usersRepository.create({
       name,

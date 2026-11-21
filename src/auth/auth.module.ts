@@ -9,6 +9,7 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { UsersModule } from '../users/users.module';
+import { EnvironmentVariables } from '../config/env.validation';
 
 @Module({
   imports: [
@@ -16,9 +17,11 @@ import { UsersModule } from '../users/users.module';
     PassportModule,
     JwtModule.registerAsync({
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        secret: configService.getOrThrow<string>('JWT_SECRET'),
-        signOptions: { expiresIn: '1h' },
+      useFactory: (config: ConfigService<EnvironmentVariables, true>) => ({
+        secret: config.get('JWT_ACCESS_SECRET', { infer: true }),
+        signOptions: {
+          expiresIn: config.get('JWT_ACCESS_EXPIRES_IN', { infer: true }),
+        },
       }),
     }),
   ],
