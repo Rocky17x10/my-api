@@ -82,6 +82,17 @@ export class AssetsService {
   }
 
   // Get complete assignment history of an asset
+  async findOne(id: number): Promise<Asset> {
+    const asset = await this.assetsRepository.findOne({
+      where: { id },
+      relations: { assignedTo: true },
+    });
+    if (!asset) {
+      throw new NotFoundException(`Asset with ID ${id} not found.`);
+    }
+    return asset;
+  }
+
   async findAssetHistory(
     assetId: number,
   ): Promise<AssetAssignmentHistory[]> {

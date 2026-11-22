@@ -45,6 +45,12 @@ export class AssetsController {
   }
 
   // Get complete history of a specific asset
+  @Get(':id')
+  @Roles('super_admin', 'admin')
+  findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.assetsService.findOne(id);
+  }
+
   @Get(':id/history')
   @Roles('super_admin', 'admin')
   findAssetHistory(

@@ -1,7 +1,7 @@
 
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Not, Repository } from 'typeorm';
 
 import { Asset } from '../assets/asset.entity';
 import { User } from '../users/user.entity';
@@ -10,6 +10,12 @@ import {
   AssetRequest,
   AssetRequestStatus,
 } from '../asset-requests/asset-request.entity';
+import { AssetReturn } from '../assets/asset-return.entity';
+import { Maintenance } from '../maintenance/maintenance.entity';
+import {
+  SupportTicket,
+  SupportTicketStatus,
+} from '../support-tickets/support-ticket.entity';
 
 @Injectable()
 export class DashboardService {
@@ -22,6 +28,15 @@ export class DashboardService {
 
     @InjectRepository(AssetRequest)
     private readonly requestRepository: Repository<AssetRequest>,
+
+    @InjectRepository(AssetReturn)
+    private readonly returnRepository: Repository<AssetReturn>,
+
+    @InjectRepository(Maintenance)
+    private readonly maintenanceRepository: Repository<Maintenance>,
+
+    @InjectRepository(SupportTicket)
+    private readonly ticketRepository: Repository<SupportTicket>,
   ) {}
 
   async getStatistics() {
@@ -33,6 +48,9 @@ export class DashboardService {
       retiredAssets,
       totalEmployees,
       pendingRequests,
+      pendingReturns,
+      inProgressMaintenance,
+      openTickets,
       departmentStatistics,
     ] = await Promise.all([
       this.assetRepository.count(),
@@ -65,6 +83,19 @@ export class DashboardService {
         },
       }),
 
+      this.returnRepository.count({ where: { status: 'pending' } }),
+
+      this.maintenanceRepository.count({ where: { status: 'in_progress' } }),
+
+      // Tickets still needing attention: anything not resolved or closed.
+      this.ticketRepository.count({
+        where: {
+          status: Not(
+            In([SupportTicketStatus.RESOLVED, SupportTicketStatus.CLOSED]),
+          ),
+        },
+      }),
+
       // Department-wise asset statistics
       this.assetRepository
         .createQueryBuilder('asset')
@@ -87,6 +118,9 @@ export class DashboardService {
         retiredAssets,
         totalEmployees,
         pendingRequests,
+        pendingReturns,
+        inProgressMaintenance,
+        openTickets,
       },
 
       departmentStatistics: departmentStatistics.map((item) => ({
