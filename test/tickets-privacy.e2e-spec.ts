@@ -33,8 +33,7 @@ describe('support tickets: privacy, notifications and audit (e2e)', () => {
     employee = await loginAs(app, 'emp@e2e.test');
     otherEmployee = await loginAs(app, 'other@e2e.test');
 
-    // The employee opens a ticket and the admin replies; no endpoint writes internal notes,
-    // so one is inserted directly.
+    // The employee opens a ticket; the admin replies and adds an internal note.
     const opened = await employee
       .post(`${API}/support-tickets`)
       .send({ subject: 'Laptop fan', category: 'hardware', description: 'The fan is very loud.' })
@@ -44,12 +43,10 @@ describe('support tickets: privacy, notifications and audit (e2e)', () => {
       .post(`${API}/support-tickets/${ticketId}/messages`)
       .send({ message: 'Public reply' })
       .expect(201);
-    await dataSource.getRepository(SupportTicketMessage).save({
-      ticket: { id: ticketId },
-      sender: { id: adminUser.id },
-      message: 'INTERNAL-ONLY note',
-      isInternalNote: true,
-    });
+    await admin
+      .post(`${API}/support-tickets/${ticketId}/messages`)
+      .send({ message: 'INTERNAL-ONLY note', isInternalNote: true })
+      .expect(201);
   });
 
   afterAll(async () => {
@@ -78,6 +75,17 @@ describe('support tickets: privacy, notifications and audit (e2e)', () => {
     expect(ticket.messages[0].sender).toMatchObject({ email: 'admin@e2e.test' });
   });
 
+  it('an employee cannot write an internal note, even on their own ticket (403)', async () => {
+    const res = await employee
+      .post(`${API}/support-tickets/${ticketId}/messages`)
+      .send({ message: 'Sneaky note', isInternalNote: true })
+      .expect(403);
+    expect(res.body).toMatchObject({ message: 'Only admins can add internal notes.' });
+    expect(
+      await dataSource.getRepository(SupportTicketMessage).countBy({ message: 'Sneaky note' }),
+    ).toBe(0);
+  });
+
   it("another employee can neither read nor reply to the ticket (403)", async () => {
     await otherEmployee.get(`${API}/support-tickets/${ticketId}`).expect(403);
     await otherEmployee
@@ -86,7 +94,7 @@ describe('support tickets: privacy, notifications and audit (e2e)', () => {
       .expect(403);
   });
 
-  it('notifications link the ticket: admin for the new ticket, employee for the reply', async () => {
+  it('notifications link the ticket: admin for the new ticket, employee for the reply only', async () => {
     expect(await notifications(admin)).toContainEqual(
       expect.objectContaining({
         title: 'New IT Support Ticket',
@@ -94,12 +102,14 @@ describe('support tickets: privacy, notifications and audit (e2e)', () => {
         ticket: expect.objectContaining({ id: ticketId }) as unknown,
       }),
     );
-    expect(await notifications(employee)).toContainEqual(
+    // One notification for the public reply, none for the internal note.
+    const ticketNotes = (await notifications(employee)).filter((n) => n.type === 'support_ticket');
+    expect(ticketNotes).toEqual([
       expect.objectContaining({
         title: 'Admin Replied to Your Ticket',
         ticket: expect.objectContaining({ id: ticketId }) as unknown,
       }),
-    );
+    ]);
   });
 
   it('an asset assignment leaves its audit log and notifies the employee', async () => {

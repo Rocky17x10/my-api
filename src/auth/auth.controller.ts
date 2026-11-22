@@ -45,6 +45,7 @@ export class AuthController {
     this.cookies = {
       secure: config.get('NODE_ENV', { infer: true }) === 'production',
       accessTtlMinutes: config.get('JWT_ACCESS_TTL_MINUTES', { infer: true }),
+      domain: config.get('COOKIE_DOMAIN', { infer: true }),
     };
   }
 
@@ -70,7 +71,7 @@ export class AuthController {
       return this.respond(res, await this.authService.refresh(token));
     } catch (error) {
       // A dead refresh cookie is useless to the browser; remove it.
-      clearAuthCookies(res, this.cookies.secure);
+      clearAuthCookies(res, this.cookies);
       throw error;
     }
   }
@@ -82,7 +83,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<void> {
     await this.authService.logout(readCookie(req, REFRESH_COOKIE));
-    clearAuthCookies(res, this.cookies.secure);
+    clearAuthCookies(res, this.cookies);
   }
 
   @Get('profile')

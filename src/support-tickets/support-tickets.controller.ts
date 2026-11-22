@@ -99,6 +99,7 @@ export class SupportTicketsController {
       user.userId,
       data.message,
       isAdmin,
+      data.isInternalNote === true,
     );
   }
 

@@ -240,7 +240,12 @@ export class SupportTicketsService {
     senderId: number,
     messageText: string,
     admin: boolean,
+    internalNote = false,
   ) {
+    if (internalNote && !admin) {
+      throw new ForbiddenException('Only admins can add internal notes.');
+    }
+
     const message = messageText?.trim();
 
     if (!message || message.length > 5000) {
@@ -276,7 +281,7 @@ export class SupportTicketsService {
       ticket,
       sender,
       message,
-      isInternalNote: false,
+      isInternalNote: internalNote,
     });
 
     // Message, status change and notifications commit or roll back together (SEC-14).
@@ -286,6 +291,9 @@ export class SupportTicketsService {
       await manager.getRepository(SupportTicketMessage).save(newMessage);
 
       if (admin) {
+        // An internal note is staff-only: no employee notification, no status change.
+        if (internalNote) return;
+
         await this.notifyEmployee(
           manager,
           ticket,

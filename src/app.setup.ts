@@ -15,6 +15,12 @@ export const API_PREFIX = 'api/v1';
 export function setupApp(app: NestExpressApplication): void {
   const config = app.get(ConfigService<EnvironmentVariables, true>);
 
+  // Behind a reverse proxy, req.ip (login throttling) must be the client, not the proxy.
+  const trustProxy = config.get('TRUST_PROXY', { infer: true });
+  if (trustProxy) {
+    app.set('trust proxy', /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy);
+  }
+
   // "/" and "/health" stay unprefixed for load balancers and uptime checks.
   app.setGlobalPrefix(API_PREFIX, {
     exclude: [

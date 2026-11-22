@@ -45,7 +45,7 @@ describe('auth (e2e)', () => {
     await app.close();
   });
 
-  it('login sets HttpOnly access and refresh cookies and returns only the user', async () => {
+  it('login sets HttpOnly access, refresh and session-hint cookies and returns only the user', async () => {
     const res = await login('emp@e2e.test').expect(200);
     const cookies = setCookies(res);
 
@@ -56,6 +56,14 @@ describe('auth (e2e)', () => {
       expect.arrayContaining(['Path=/api/v1/auth', 'HttpOnly', 'SameSite=Lax']),
     );
     expect(attributes(cookies.access_token)).not.toContain('Secure');
+    // Role hint for the frontend's redirects, sent to every path, expiring with the refresh token.
+    expect(attributes(cookies.session)).toEqual(
+      expect.arrayContaining(['session=user', 'Path=/', 'HttpOnly', 'SameSite=Lax']),
+    );
+    expect(cookies.session.match(/Expires=[^;]+/)?.[0]).toBe(
+      cookies.refresh_token.match(/Expires=[^;]+/)?.[0],
+    );
+    expect(cookies.session).not.toContain('Domain='); // COOKIE_DOMAIN unset: host-only
 
     expect(Object.keys(res.body as object)).toEqual(['user']);
     expect(res.body).toMatchObject({ user: { id: emp.id, email: 'emp@e2e.test', role: 'user' } });
@@ -100,14 +108,16 @@ describe('auth (e2e)', () => {
     const rotated = await refresh(first).expect(200);
     expect(rotated.body).toMatchObject({ user: { email: 'refresh@e2e.test' } });
     expect(setCookies(rotated).access_token).toBeDefined();
+    expect(cookieValue(setCookies(rotated).session)).toBe('user');
     const second = cookieValue(setCookies(rotated).refresh_token);
     expect(second).not.toBe(first);
 
-    await refresh(first).expect(401); // someone replayed a used token...
+    const replayed = await refresh(first).expect(401); // someone replayed a used token...
+    expect(setCookies(replayed).session).toMatch(/^session=;.*Path=\/;.*Expires=Thu, 01 Jan 1970/);
     await refresh(second).expect(401); // ...so the whole session is gone
   });
 
-  it('logout: 204, clears both cookies, and the old refresh token is dead', async () => {
+  it('logout: 204, clears all three cookies, and the old refresh token is dead', async () => {
     await makeUser(dataSource, 'user', 'logout@e2e.test');
     const token = cookieValue(setCookies(await login('logout@e2e.test').expect(200)).refresh_token);
 
@@ -118,6 +128,7 @@ describe('auth (e2e)', () => {
     const cleared = setCookies(res);
     expect(cleared.access_token).toMatch(/^access_token=;.*Expires=Thu, 01 Jan 1970/);
     expect(cleared.refresh_token).toMatch(/^refresh_token=;.*Expires=Thu, 01 Jan 1970/);
+    expect(cleared.session).toMatch(/^session=;.*Path=\/;.*Expires=Thu, 01 Jan 1970/);
 
     await refresh(token).expect(401);
   });

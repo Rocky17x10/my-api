@@ -7,11 +7,13 @@ import {
   UpdateDateColumn,
   ManyToOne,
   JoinColumn,
+  Index,
 } from 'typeorm';
 
 import { User } from '../users/user.entity';
 
 @Entity('assets')
+@Index('IDX_assets_status', ['status'])
 export class Asset {
   @PrimaryGeneratedColumn()
   id: number;

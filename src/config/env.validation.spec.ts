@@ -22,6 +22,13 @@ describe('validateEnv', () => {
     expect(env.REFRESH_TOKEN_TTL_DAYS).toBe(7);
   });
 
+  it('leaves cookie domain and trust proxy unset unless given', () => {
+    expect(validateEnv(required)).toMatchObject({ COOKIE_DOMAIN: undefined, TRUST_PROXY: undefined });
+    expect(
+      validateEnv({ ...required, COOKIE_DOMAIN: 'example.com', TRUST_PROXY: '1' }),
+    ).toMatchObject({ COOKIE_DOMAIN: 'example.com', TRUST_PROXY: '1' });
+  });
+
   it('converts numeric strings from .env', () => {
     const env = validateEnv({ ...required, PORT: '4000', BCRYPT_SALT_ROUNDS: '11' });
 
@@ -54,6 +61,7 @@ describe('validateEnv', () => {
     ['bcrypt cost too low', { BCRYPT_SALT_ROUNDS: '4' }, 'BCRYPT_SALT_ROUNDS'],
     ['unknown NODE_ENV', { NODE_ENV: 'staging' }, 'NODE_ENV'],
     ['unsupported database type', { DATABASE_TYPE: 'postgres' }, 'DATABASE_TYPE'],
+    ['cookie domain that is not a domain', { COOKIE_DOMAIN: 'http://x' }, 'COOKIE_DOMAIN'],
   ])('rejects %s', (_name, override, key) => {
     expect(() => validateEnv({ ...required, ...override })).toThrow(key);
   });

@@ -13,6 +13,7 @@ import { User } from '../users/user.entity';
 
 @Entity('activity_logs')
 @Index('IDX_activity_logs_entity', ['entityType', 'entityId'])
+@Index('IDX_activity_logs_created_at', ['createdAt'])
 export class ActivityLog {
   @PrimaryGeneratedColumn()
   id: number;

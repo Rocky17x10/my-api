@@ -1,5 +1,6 @@
 import { plainToInstance, Transform } from 'class-transformer';
 import {
+  IsFQDN,
   IsIn,
   IsInt,
   IsNotEmpty,
@@ -73,6 +74,17 @@ export class EnvironmentVariables {
   @IsString()
   @IsNotEmpty()
   FRONTEND_URL!: string;
+
+  /** Domain for all auth cookies (e.g. example.com for app. and api. subdomains); unset = host-only. */
+  @IsOptional()
+  @IsFQDN()
+  COOKIE_DOMAIN?: string;
+
+  /** Express "trust proxy": hop count (e.g. 1) or preset/IP list (e.g. loopback); unset = trust none. */
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  TRUST_PROXY?: string;
 
   @Transform(({ value }) => Number(value))
   @IsInt()

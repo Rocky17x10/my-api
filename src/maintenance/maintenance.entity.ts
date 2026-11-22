@@ -6,6 +6,7 @@ import {
   UpdateDateColumn,
   ManyToOne,
   JoinColumn,
+  Index,
 } from 'typeorm';
 
 import { Asset } from '../assets/asset.entity';
@@ -14,6 +15,7 @@ import { User } from '../users/user.entity';
 export type MaintenanceStatus = 'in_progress' | 'completed';
 
 @Entity('maintenance_records')
+@Index('IDX_maintenance_records_status', ['status'])
 export class Maintenance {
   @PrimaryGeneratedColumn()
   id: number;
