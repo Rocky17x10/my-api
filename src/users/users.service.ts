@@ -4,14 +4,21 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 
 import { User, UserRole } from './user.entity';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { ActivityLog } from '../activity-logs/activity-log.entity';
+import { accountChangeDenied } from './account-rules';
+import { EnvironmentVariables } from '../config/env.validation';
+import { Page, paginate } from '../common/pagination';
+import { UserListQueryDto } from './dto/user-list-query.dto';
 
 @Injectable()
 export class UsersService {
@@ -20,6 +27,8 @@ export class UsersService {
     private readonly usersRepository: Repository<User>,
 
     private readonly activityLogsService: ActivityLogsService,
+
+    private readonly config: ConfigService<EnvironmentVariables, true>,
   ) {}
 
   // Find a user by email for authentication
@@ -74,10 +83,58 @@ export class UsersService {
   }
 
   // GET /users
-  findAll(): Promise<User[]> {
-    return this.usersRepository.find({
-      order: { id: 'DESC' },
+  findAll(query: UserListQueryDto): Promise<Page<User>> {
+    const builder = this.usersRepository.createQueryBuilder('user');
+
+    if (query.role) {
+      builder.andWhere('user.role = :role', { role: query.role });
+    }
+
+    if (query.isActive !== undefined) {
+      builder.andWhere('user.isActive = :isActive', { isActive: query.isActive });
+    }
+
+    if (query.search) {
+      // LIKE is case-insensitive under the default *_ci collation.
+      builder.andWhere(
+        '(user.name LIKE :search OR user.email LIKE :search OR user.department LIKE :search OR user.designation LIKE :search)',
+        { search: `%${query.search}%` },
+      );
+    }
+
+    return paginate(builder, query, `user.${query.sort}`);
+  }
+
+  // Session checks: null instead of 404, so a deleted user gets 401.
+  findById(id: number): Promise<User | null> {
+    return this.usersRepository.findOneBy({ id });
+  }
+
+  /** mustChange: true when an admin chose the password (the user must replace it). */
+  async setPassword(
+    id: number,
+    password: string,
+    mustChange: boolean,
+    manager?: EntityManager,
+  ): Promise<void> {
+    const hash = await bcrypt.hash(
+      password,
+      this.config.get('BCRYPT_SALT_ROUNDS', { infer: true }),
+    );
+    const repository = manager?.getRepository(User) ?? this.usersRepository;
+    await repository.update(id, {
+      password: hash,
+      mustChangePassword: mustChange,
     });
+  }
+
+  async setActive(
+    id: number,
+    active: boolean,
+    manager?: EntityManager,
+  ): Promise<void> {
+    const repository = manager?.getRepository(User) ?? this.usersRepository;
+    await repository.update(id, { isActive: active });
   }
 
   // GET /users/:id
@@ -100,7 +157,10 @@ export class UsersService {
     designation: string | undefined,
     actorId: number,
   ): Promise<User> {
-    const hashedPassword = await bcrypt.hash(password, 12);
+    const hashedPassword = await bcrypt.hash(
+      password,
+      this.config.get('BCRYPT_SALT_ROUNDS', { infer: true }),
+    );
 
     const user = this.usersRepository.create({
       name,
@@ -108,24 +168,36 @@ export class UsersService {
       password: hashedPassword,
       department: department || null,
       designation: designation || null,
+      // The admin knows this password, so the employee must replace it (SEC-04).
+      mustChangePassword: true,
     });
 
-    const savedUser = await this.usersRepository.save(user);
+    // The log commits or rolls back with the change it describes (SEC-14).
+    const savedUser = await this.usersRepository.manager.transaction(
+      async (manager) => {
+        const saved = await manager.getRepository(User).save(user);
 
-    await this.activityLogsService.createLog({
-      actorId,
-      action: 'EMPLOYEE_CREATED',
-      entityType: 'employee',
-      entityId: savedUser.id,
-      description: `Employee ${savedUser.name} (${savedUser.email}) was created.`,
-      metadata: {
-        name: savedUser.name,
-        email: savedUser.email,
-        department: savedUser.department,
-        designation: savedUser.designation,
-        role: savedUser.role,
+        await this.activityLogsService.createLog(
+          {
+            actorId,
+            action: 'EMPLOYEE_CREATED',
+            entityType: 'employee',
+            entityId: saved.id,
+            description: `Employee ${saved.name} (${saved.email}) was created.`,
+            metadata: {
+              name: saved.name,
+              email: saved.email,
+              department: saved.department,
+              designation: saved.designation,
+              role: saved.role,
+            },
+          },
+          manager,
+        );
+
+        return saved;
       },
-    });
+    );
 
     const { password: _password, ...safeUser } = savedUser;
 
@@ -139,15 +211,14 @@ export class UsersService {
     email: string | undefined,
     department: string | undefined,
     designation: string | undefined,
-    actorId: number,
+    actor: { userId: number; role: UserRole },
   ): Promise<User> {
+    const actorId = actor.userId;
     const user = await this.findOne(id);
 
-    // Protect the Super Admin account
-    if (user.role === 'super_admin') {
-      throw new ForbiddenException(
-        'The Super Admin account cannot be modified.',
-      );
+    const denied = accountChangeDenied(actor, user);
+    if (denied) {
+      throw new ForbiddenException(denied);
     }
 
     const previousValues = {
@@ -173,26 +244,31 @@ export class UsersService {
       user.designation = designation || null;
     }
 
-    const updatedUser = await this.usersRepository.save(user);
+    return this.usersRepository.manager.transaction(async (manager) => {
+      const updatedUser = await manager.getRepository(User).save(user);
 
-    await this.activityLogsService.createLog({
-      actorId,
-      action: 'EMPLOYEE_UPDATED',
-      entityType: 'employee',
-      entityId: updatedUser.id,
-      description: `Employee ${updatedUser.name} (${updatedUser.email}) was updated.`,
-      metadata: {
-        previousValues,
-        updatedValues: {
-          name: updatedUser.name,
-          email: updatedUser.email,
-          department: updatedUser.department,
-          designation: updatedUser.designation,
+      await this.activityLogsService.createLog(
+        {
+          actorId,
+          action: 'EMPLOYEE_UPDATED',
+          entityType: 'employee',
+          entityId: updatedUser.id,
+          description: `Employee ${updatedUser.name} (${updatedUser.email}) was updated.`,
+          metadata: {
+            previousValues,
+            updatedValues: {
+              name: updatedUser.name,
+              email: updatedUser.email,
+              department: updatedUser.department,
+              designation: updatedUser.designation,
+            },
+          },
         },
-      },
-    });
+        manager,
+      );
 
-    return updatedUser;
+      return updatedUser;
+    });
   }
 
   // PATCH /users/:id/role
@@ -226,34 +302,48 @@ export class UsersService {
 
     user.role = role;
 
-    const updatedUser = await this.usersRepository.save(user);
+    return this.usersRepository.manager.transaction(async (manager) => {
+      const updatedUser = await manager.getRepository(User).save(user);
 
-    await this.activityLogsService.createLog({
-      actorId,
-      action: 'EMPLOYEE_ROLE_CHANGED',
-      entityType: 'employee',
-      entityId: updatedUser.id,
-      description: `The role of ${updatedUser.name} was changed from ${previousRole} to ${role}.`,
-      metadata: {
-        previousRole,
-        newRole: role,
-      },
+      await this.activityLogsService.createLog(
+        {
+          actorId,
+          action: 'EMPLOYEE_ROLE_CHANGED',
+          entityType: 'employee',
+          entityId: updatedUser.id,
+          description: `The role of ${updatedUser.name} was changed from ${previousRole} to ${role}.`,
+          metadata: {
+            previousRole,
+            newRole: role,
+          },
+        },
+        manager,
+      );
+
+      return updatedUser;
     });
-
-    return updatedUser;
   }
 
   // DELETE /users/:id
   async remove(
     id: number,
-    actorId: number,
+    actor: { userId: number; role: UserRole },
   ): Promise<{ message: string }> {
+    const actorId = actor.userId;
     const user = await this.findOne(id);
 
-    // Never allow deletion of the Super Admin account
-    if (user.role === 'super_admin') {
-      throw new ForbiddenException(
-        'The Super Admin account cannot be deleted.',
+    const denied = accountChangeDenied(actor, user);
+    if (denied) {
+      throw new ForbiddenException(denied);
+    }
+
+    // Deleting would blank the actor of their audit-log entries (FK SET NULL).
+    const hasHistory = await this.usersRepository.manager.exists(ActivityLog, {
+      where: { actor: { id: user.id } },
+    });
+    if (hasHistory) {
+      throw new ConflictException(
+        'This account has activity history and cannot be deleted. Deactivate it instead.',
       );
     }
 
@@ -266,15 +356,20 @@ export class UsersService {
       role: user.role,
     };
 
-    await this.usersRepository.remove(user);
+    await this.usersRepository.manager.transaction(async (manager) => {
+      await manager.getRepository(User).remove(user);
 
-    await this.activityLogsService.createLog({
-      actorId,
-      action: 'EMPLOYEE_DELETED',
-      entityType: 'employee',
-      entityId: deletedUser.id,
-      description: `Employee ${deletedUser.name} (${deletedUser.email}) was deleted.`,
-      metadata: deletedUser,
+      await this.activityLogsService.createLog(
+        {
+          actorId,
+          action: 'EMPLOYEE_DELETED',
+          entityType: 'employee',
+          entityId: deletedUser.id,
+          description: `Employee ${deletedUser.name} (${deletedUser.email}) was deleted.`,
+          metadata: deletedUser,
+        },
+        manager,
+      );
     });
 
     return { message: 'User deleted successfully' };

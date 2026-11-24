@@ -6,29 +6,23 @@ import {
   Patch,
   Body,
   Param,
-  Req,
   UseGuards,
   ParseIntPipe,
+  Query,
 } from '@nestjs/common';
 
 import { SupportTicketsService } from './support-tickets.service';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
-import { Roles } from '../auth/roles.decorator';
-import { UserRole } from '../users/user.entity';
+import { AnyRole, Roles } from '../auth/roles.decorator';
 
 import { CreateSupportTicketDto } from './dto/create-support-ticket.dto';
 import { AddTicketMessageDto } from './dto/add-ticket-message.dto';
 import { UpdateTicketStatusDto } from './dto/update-ticket-status.dto';
-
-type AuthenticatedRequest = {
-  user: {
-    userId: number;
-    email: string;
-    role: UserRole;
-  };
-};
+import { TicketQueryDto } from './dto/ticket-query.dto';
+import { CurrentUser } from '../common/current-user.decorator';
+import type { AuthUser } from '../auth/jwt.strategy';
 
 @Controller('support-tickets')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -39,66 +33,73 @@ export class SupportTicketsController {
 
   // Create a new support ticket
   @Post()
+  @AnyRole()
   async create(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthUser,
     @Body() data: CreateSupportTicketDto,
   ) {
     return this.supportTicketsService.create(
-      req.user.userId,
+      user.userId,
       data,
     );
   }
 
   // Employee: View own tickets
   @Get('my')
+  @AnyRole()
   async findMyTickets(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthUser,
+    @Query() query: TicketQueryDto,
   ) {
     return this.supportTicketsService.findMyTickets(
-      req.user.userId,
+      user.userId,
+      query,
     );
   }
 
   // Admin and Super Admin: View all tickets
   @Get()
   @Roles('admin', 'super_admin')
-  async findAll() {
-    return this.supportTicketsService.findAll();
+  async findAll(@Query() query: TicketQueryDto) {
+    return this.supportTicketsService.findAll(query);
   }
 
   // View one ticket (owner or admin)
   @Get(':id')
+  @AnyRole()
   async findOne(
     @Param('id', ParseIntPipe) id: number,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthUser,
   ) {
     const isAdmin =
-      req.user.role === 'admin' ||
-      req.user.role === 'super_admin';
+      user.role === 'admin' ||
+      user.role === 'super_admin';
 
     return this.supportTicketsService.findOne(
       id,
-      req.user.userId,
+      user.userId,
       isAdmin,
     );
   }
 
   // Employee or Admin: Add a reply
   @Post(':id/messages')
+  @AnyRole()
   async addMessage(
     @Param('id', ParseIntPipe) id: number,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthUser,
     @Body() data: AddTicketMessageDto,
   ) {
     const isAdmin =
-      req.user.role === 'admin' ||
-      req.user.role === 'super_admin';
+      user.role === 'admin' ||
+      user.role === 'super_admin';
 
     return this.supportTicketsService.addMessage(
       id,
-      req.user.userId,
+      user.userId,
       data.message,
       isAdmin,
+      data.isInternalNote === true,
     );
   }
 
@@ -107,12 +108,12 @@ export class SupportTicketsController {
   @Roles('admin', 'super_admin')
   async updateStatus(
     @Param('id', ParseIntPipe) id: number,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthUser,
     @Body() data: UpdateTicketStatusDto,
   ) {
     return this.supportTicketsService.updateStatus(
       id,
-      req.user.userId,
+      user.userId,
       data.status,
     );
   }

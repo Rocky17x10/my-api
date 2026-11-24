@@ -1,6 +1,7 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 
 import { ReportsService } from './reports.service';
+import { ReportQueryDto } from './dto/report-query.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -12,7 +13,7 @@ export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
   @Get('assets')
-  getAssets(@Query() query: Record<string, string>) {
+  getAssets(@Query() query: ReportQueryDto) {
     return this.reportsService.getAssets(query);
   }
 
@@ -27,17 +28,17 @@ export class ReportsController {
   }
 
   @Get('assigned-assets')
-  getAssignedAssets(@Query() query: Record<string, string>) {
+  getAssignedAssets(@Query() query: ReportQueryDto) {
     return this.reportsService.getAssignedAssets(query);
   }
 
   @Get('available-assets')
-  getAvailableAssets(@Query() query: Record<string, string>) {
+  getAvailableAssets(@Query() query: ReportQueryDto) {
     return this.reportsService.getAvailableAssets(query);
   }
 
   @Get('maintenance')
-  getMaintenance(@Query() query: Record<string, string>) {
+  getMaintenance(@Query() query: ReportQueryDto) {
     return this.reportsService.getMaintenance(query);
   }
 

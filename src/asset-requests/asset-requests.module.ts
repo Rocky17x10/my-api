@@ -7,13 +7,13 @@ import { AssetRequestsController } from './asset-requests.controller';
 import { AssetRequestsService } from './asset-requests.service';
 
 import { User } from '../users/user.entity';
-import { SupportTicketsModule } from '../support-tickets/support-tickets.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { ActivityLogsModule } from '../activity-logs/activity-logs.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([AssetRequest, User]),
-    SupportTicketsModule,
+    NotificationsModule,
     ActivityLogsModule,
   ],
   controllers: [AssetRequestsController],

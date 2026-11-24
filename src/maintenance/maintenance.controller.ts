@@ -5,21 +5,25 @@ import {
   Patch,
   Body,
   Param,
-  Req,
   UseGuards,
   ParseIntPipe,
+  Query,
 } from '@nestjs/common';
+
+import type { AuthUser } from '../auth/jwt.strategy';
 
 import { MaintenanceService } from './maintenance.service';
 
 import {
   CreateMaintenanceDto,
   CompleteMaintenanceDto,
+  MaintenanceQueryDto,
 } from './maintenance.dto';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
+import { CurrentUser } from '../common/current-user.decorator';
 
 @Controller('maintenance')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -30,13 +34,13 @@ export class MaintenanceController {
   ) {}
 
   @Post()
-  create(@Body() dto: CreateMaintenanceDto, @Req() req: any) {
-    return this.maintenanceService.create(dto, req.user.userId);
+  create(@Body() dto: CreateMaintenanceDto, @CurrentUser() user: AuthUser) {
+    return this.maintenanceService.create(dto, user.userId);
   }
 
   @Get()
-  findAll() {
-    return this.maintenanceService.findAll();
+  findAll(@Query() query: MaintenanceQueryDto) {
+    return this.maintenanceService.findAll(query);
   }
 
   @Get('asset/:assetId')
@@ -53,12 +57,12 @@ export class MaintenanceController {
   complete(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CompleteMaintenanceDto,
-    @Req() req: any,
+    @CurrentUser() user: AuthUser,
   ) {
     return this.maintenanceService.complete(
       id,
       dto,
-      req.user.userId,
+      user.userId,
     );
   }
 }

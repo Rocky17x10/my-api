@@ -8,6 +8,7 @@ import {
   ManyToOne,
   OneToMany,
   JoinColumn,
+  Index,
 } from 'typeorm';
 
 import { User } from '../users/user.entity';
@@ -30,6 +31,7 @@ export enum SupportTicketStatus {
 }
 
 @Entity('support_tickets')
+@Index('IDX_support_tickets_status', ['status'])
 export class SupportTicket {
   @PrimaryGeneratedColumn()
   id: number;

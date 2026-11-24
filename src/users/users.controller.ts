@@ -9,30 +9,24 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
   UseGuards,
-  Req,
 } from '@nestjs/common';
-
-import type { Request } from 'express';
 
 import { UsersService } from './users.service';
 import { User } from './user.entity';
-import type { UserRole } from './user.entity';
 
 import { CreateUserDto } from './create-user.dto';
 import { UpdateUserDto } from './update-user.dto';
+import { ChangeRoleDto } from './dto/change-role.dto';
+import { UserListQueryDto } from './dto/user-list-query.dto';
+import type { Page } from '../common/pagination';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
-
-interface AuthenticatedRequest extends Request {
-  user: {
-    userId: number;
-    email: string;
-    role: UserRole;
-  };
-}
+import { CurrentUser } from '../common/current-user.decorator';
+import type { AuthUser } from '../auth/jwt.strategy';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -44,8 +38,8 @@ export class UsersController {
 
   // GET /users
   @Get()
-  findAll(): Promise<User[]> {
-    return this.usersService.findAll();
+  findAll(@Query() query: UserListQueryDto): Promise<Page<User>> {
+    return this.usersService.findAll(query);
   }
 
   // GET /users/:id
@@ -60,7 +54,7 @@ export class UsersController {
   @Post()
   create(
     @Body() createUserDto: CreateUserDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthUser,
   ): Promise<User> {
     return this.usersService.create(
       createUserDto.name,
@@ -68,7 +62,7 @@ export class UsersController {
       createUserDto.password,
       createUserDto.department,
       createUserDto.designation,
-      req.user.userId,
+      user.userId,
     );
   }
 
@@ -77,7 +71,7 @@ export class UsersController {
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateUserDto: UpdateUserDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthUser,
   ): Promise<User> {
     if (
       updateUserDto.name === undefined &&
@@ -96,7 +90,7 @@ export class UsersController {
       updateUserDto.email,
       updateUserDto.department,
       updateUserDto.designation,
-      req.user.userId,
+      user,
     );
   }
 
@@ -106,19 +100,13 @@ export class UsersController {
   @Roles('super_admin')
   changeRole(
     @Param('id', ParseIntPipe) id: number,
-    @Body('role') role: string,
-    @Req() req: AuthenticatedRequest,
+    @Body() dto: ChangeRoleDto,
+    @CurrentUser() user: AuthUser,
   ): Promise<User> {
-    if (role !== 'admin' && role !== 'user') {
-      throw new BadRequestException(
-        'Role must be either admin or user.',
-      );
-    }
-
     return this.usersService.changeRole(
       id,
-      role as UserRole,
-      req.user.userId,
+      dto.role,
+      user.userId,
     );
   }
 
@@ -126,11 +114,11 @@ export class UsersController {
   @Delete(':id')
   remove(
     @Param('id', ParseIntPipe) id: number,
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthUser,
   ): Promise<{ message: string }> {
     return this.usersService.remove(
       id,
-      req.user.userId,
+      user,
     );
   }
 }

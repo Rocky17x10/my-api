@@ -7,6 +7,7 @@ import {
   JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
+  Index,
 } from 'typeorm';
 
 import { User } from '../users/user.entity';
@@ -18,6 +19,7 @@ export enum AssetRequestStatus {
 }
 
 @Entity('asset_requests')
+@Index('IDX_asset_requests_status', ['status'])
 export class AssetRequest {
   @PrimaryGeneratedColumn()
   id: number;

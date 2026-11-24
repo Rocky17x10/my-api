@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository, SelectQueryBuilder } from 'typeorm';
 import { randomUUID } from 'crypto';
 
 import { User } from '../users/user.entity';
@@ -19,9 +19,11 @@ import {
 } from './support-ticket.entity';
 
 import { SupportTicketMessage } from './support-ticket-message.entity';
-import { Notification } from './notification.entity';
+import { NotificationsService } from '../notifications/notifications.service';
 
 import { CreateSupportTicketDto } from './dto/create-support-ticket.dto';
+import { TicketQueryDto } from './dto/ticket-query.dto';
+import { paginate } from '../common/pagination';
 
 @Injectable()
 export class SupportTicketsService {
@@ -32,55 +34,57 @@ export class SupportTicketsService {
     @InjectRepository(SupportTicketMessage)
     private readonly messageRepository: Repository<SupportTicketMessage>,
 
-    @InjectRepository(Notification)
-    private readonly notificationRepository: Repository<Notification>,
-
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   private isAdmin(role: string): boolean {
     return role === 'admin' || role === 'super_admin';
   }
 
+  // Notifications are written with the caller's transaction manager (SEC-14).
   private async notifyAdmins(
+    manager: EntityManager,
     ticket: SupportTicket,
     title: string,
     message: string,
   ) {
-    const admins = await this.userRepository.find({
+    const admins = await manager.getRepository(User).find({
       where: [{ role: 'admin' }, { role: 'super_admin' }],
     });
 
-    if (!admins.length) return;
-
-    const notifications = admins.map((admin) =>
-      this.notificationRepository.create({
-        recipient: admin,
-        ticket,
-        title,
-        message,
-        type: 'support_ticket',
-      }),
+    await Promise.all(
+      admins.map((admin) =>
+        this.notificationsService.createNotification(
+          admin.id,
+          title,
+          message,
+          'support_ticket',
+          null,
+          manager,
+          ticket.id,
+        ),
+      ),
     );
-
-    await this.notificationRepository.save(notifications);
   }
 
   private async notifyEmployee(
+    manager: EntityManager,
     ticket: SupportTicket,
     title: string,
     message: string,
   ) {
-    const notification = this.notificationRepository.create({
-      recipient: ticket.createdBy,
-      ticket,
+    await this.notificationsService.createNotification(
+      ticket.createdBy.id,
       title,
       message,
-      type: 'support_ticket',
-    });
-
-    await this.notificationRepository.save(notification);
+      'support_ticket',
+      null,
+      manager,
+      ticket.id,
+    );
   }
 
   async create(userId: number, data: CreateSupportTicketDto) {
@@ -123,48 +127,100 @@ export class SupportTicketsService {
       createdBy: user,
     });
 
-    const savedTicket = await this.ticketRepository.save(ticket);
+    // Ticket, its number and the admin notifications commit or roll back together (SEC-14).
+    const savedId = await this.ticketRepository.manager.transaction(
+      async (manager) => {
+        const ticketRepository = manager.getRepository(SupportTicket);
 
-    // Generate the permanent ticket number after the database assigns its ID.
-    savedTicket.ticketNumber =
-      `IT-${new Date().getFullYear()}-${String(savedTicket.id).padStart(4, '0')}`;
+        const savedTicket = await ticketRepository.save(ticket);
 
-    await this.ticketRepository.save(savedTicket);
+        // Generate the permanent ticket number after the database assigns its ID.
+        savedTicket.ticketNumber =
+          `IT-${new Date().getFullYear()}-${String(savedTicket.id).padStart(4, '0')}`;
 
-    await this.notifyAdmins(
-      savedTicket,
-      'New IT Support Ticket',
-      `${user.name} submitted ticket ${savedTicket.ticketNumber}: ${subject}`,
+        await ticketRepository.save(savedTicket);
+
+        await this.notifyAdmins(
+          manager,
+          savedTicket,
+          'New IT Support Ticket',
+          `${user.name} submitted ticket ${savedTicket.ticketNumber}: ${subject}`,
+        );
+
+        return savedTicket.id;
+      },
     );
 
-    return this.findOne(savedTicket.id, userId, false);
+    return this.findOne(savedId, userId, false);
   }
 
-  async findMyTickets(userId: number) {
-    return this.ticketRepository.find({
-      where: { createdBy: { id: userId } },
-      relations: { createdBy: true, assignedTo: true },
-      order: { createdAt: 'DESC' },
-    });
+  // The assigned admin comes back as id + name only (SEC-13).
+  async findMyTickets(userId: number, query: TicketQueryDto) {
+    const tickets = this.ticketRepository
+      .createQueryBuilder('ticket')
+      .leftJoinAndSelect('ticket.createdBy', 'createdBy')
+      .leftJoin('ticket.assignedTo', 'assignedTo')
+      .addSelect(['assignedTo.id', 'assignedTo.name'])
+      .where('createdBy.id = :userId', { userId });
+
+    return this.page(tickets, query);
   }
 
-  async findAll() {
-    return this.ticketRepository.find({
-      relations: { createdBy: true, assignedTo: true },
-      order: { createdAt: 'DESC' },
-    });
+  async findAll(query: TicketQueryDto) {
+    const tickets = this.ticketRepository
+      .createQueryBuilder('ticket')
+      .leftJoinAndSelect('ticket.createdBy', 'createdBy')
+      .leftJoinAndSelect('ticket.assignedTo', 'assignedTo');
+
+    return this.page(tickets, query);
   }
 
+  // Status and priority filters, search, sort and one page.
+  private page(
+    tickets: SelectQueryBuilder<SupportTicket>,
+    query: TicketQueryDto,
+  ) {
+    if (query.status) {
+      tickets.andWhere('ticket.status = :status', { status: query.status });
+    }
+
+    if (query.priority) {
+      tickets.andWhere('ticket.priority = :priority', {
+        priority: query.priority,
+      });
+    }
+
+    if (query.search) {
+      tickets.andWhere(
+        '(ticket.ticketNumber LIKE :search OR ticket.subject LIKE :search)',
+        { search: `%${query.search}%` },
+      );
+    }
+
+    return paginate(tickets, query, `ticket.${query.sort}`);
+  }
+
+  // Employees never receive internal notes (SEC-06) and see staff as id + name only (SEC-13).
   async findOne(ticketId: number, userId: number, admin: boolean) {
-    const ticket = await this.ticketRepository.findOne({
-      where: { id: ticketId },
-      relations: {
-        createdBy: true,
-        assignedTo: true,
-        messages: { sender: true },
-      },
-      order: { messages: { createdAt: 'ASC' } },
-    });
+    const staff = (alias: string) =>
+      admin ? [alias] : [`${alias}.id`, `${alias}.name`];
+
+    const ticket = await this.ticketRepository
+      .createQueryBuilder('ticket')
+      .leftJoinAndSelect('ticket.createdBy', 'createdBy')
+      .leftJoin('ticket.assignedTo', 'assignedTo')
+      .addSelect(staff('assignedTo'))
+      .leftJoinAndSelect(
+        'ticket.messages',
+        'message',
+        admin ? undefined : 'message.isInternalNote = :internal',
+        { internal: false },
+      )
+      .leftJoin('message.sender', 'sender')
+      .addSelect(staff('sender'))
+      .where('ticket.id = :ticketId', { ticketId })
+      .orderBy('message.createdAt', 'ASC')
+      .getOne();
 
     if (!ticket) {
       throw new NotFoundException('Support ticket not found.');
@@ -184,7 +240,12 @@ export class SupportTicketsService {
     senderId: number,
     messageText: string,
     admin: boolean,
+    internalNote = false,
   ) {
+    if (internalNote && !admin) {
+      throw new ForbiddenException('Only admins can add internal notes.');
+    }
+
     const message = messageText?.trim();
 
     if (!message || message.length > 5000) {
@@ -220,41 +281,51 @@ export class SupportTicketsService {
       ticket,
       sender,
       message,
-      isInternalNote: false,
+      isInternalNote: internalNote,
     });
 
-    await this.messageRepository.save(newMessage);
+    // Message, status change and notifications commit or roll back together (SEC-14).
+    await this.ticketRepository.manager.transaction(async (manager) => {
+      const ticketRepository = manager.getRepository(SupportTicket);
 
-    if (admin) {
-      await this.notifyEmployee(
-        ticket,
-        'Admin Replied to Your Ticket',
-        `Admin replied to ticket ${ticket.ticketNumber}.`,
-      );
-    } else {
-      if (
-        ticket.status === SupportTicketStatus.RESOLVED ||
-        ticket.status === SupportTicketStatus.CLOSED
-      ) {
-        ticket.status = SupportTicketStatus.REOPENED;
-        ticket.resolvedAt = null;
-        ticket.closedAt = null;
+      await manager.getRepository(SupportTicketMessage).save(newMessage);
 
-        await this.ticketRepository.save(ticket);
-      } else if (
-        ticket.status === SupportTicketStatus.WAITING_FOR_EMPLOYEE
-      ) {
-        ticket.status = SupportTicketStatus.IN_PROGRESS;
+      if (admin) {
+        // An internal note is staff-only: no employee notification, no status change.
+        if (internalNote) return;
 
-        await this.ticketRepository.save(ticket);
+        await this.notifyEmployee(
+          manager,
+          ticket,
+          'Admin Replied to Your Ticket',
+          `Admin replied to ticket ${ticket.ticketNumber}.`,
+        );
+      } else {
+        if (
+          ticket.status === SupportTicketStatus.RESOLVED ||
+          ticket.status === SupportTicketStatus.CLOSED
+        ) {
+          ticket.status = SupportTicketStatus.REOPENED;
+          ticket.resolvedAt = null;
+          ticket.closedAt = null;
+
+          await ticketRepository.save(ticket);
+        } else if (
+          ticket.status === SupportTicketStatus.WAITING_FOR_EMPLOYEE
+        ) {
+          ticket.status = SupportTicketStatus.IN_PROGRESS;
+
+          await ticketRepository.save(ticket);
+        }
+
+        await this.notifyAdmins(
+          manager,
+          ticket,
+          'New Employee Reply',
+          `${sender.name} replied to ticket ${ticket.ticketNumber}.`,
+        );
       }
-
-      await this.notifyAdmins(
-        ticket,
-        'New Employee Reply',
-        `${sender.name} replied to ticket ${ticket.ticketNumber}.`,
-      );
-    }
+    });
 
     return this.findOne(ticketId, senderId, admin);
   }
@@ -303,13 +374,17 @@ export class SupportTicketsService {
       ticket.closedAt = null;
     }
 
-    await this.ticketRepository.save(ticket);
+    // Status change and employee notification commit or roll back together (SEC-14).
+    await this.ticketRepository.manager.transaction(async (manager) => {
+      await manager.getRepository(SupportTicket).save(ticket);
 
-    await this.notifyEmployee(
-      ticket,
-      'Ticket Status Updated',
-      `Your ticket ${ticket.ticketNumber} status is now: ${newStatus.replace(/_/g, ' ')}.`,
-    );
+      await this.notifyEmployee(
+        manager,
+        ticket,
+        'Ticket Status Updated',
+        `Your ticket ${ticket.ticketNumber} status is now: ${newStatus.replace(/_/g, ' ')}.`,
+      );
+    });
 
     return this.findOne(ticketId, adminId, true);
   }

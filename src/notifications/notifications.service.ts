@@ -5,10 +5,12 @@ import {
 } from '@nestjs/common';
 
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 
-import { Notification } from '../notification.entity';
-import { User } from '../../users/user.entity';
+import { Notification } from './notification.entity';
+import { User } from '../users/user.entity';
+import { paginate } from '../common/pagination';
+import { NotificationQueryDto } from './notification-query.dto';
 
 @Injectable()
 export class NotificationsService {
@@ -18,18 +20,24 @@ export class NotificationsService {
   ) {}
 
   // Create a notification for a specific user.
-  // referenceId is optional and is used for linked records
-  // such as asset requests.
+  // referenceId is optional and is used for linked records such as asset requests.
+  // Pass the caller's transaction manager so the notification commits or rolls back with it.
+  // ticketId links support-ticket notifications; findMyNotifications returns that relation.
   async createNotification(
     recipientId: number,
     title: string,
     message: string,
     type: string,
     referenceId?: number | null,
+    manager?: EntityManager,
+    ticketId?: number | null,
   ) {
-    const notification = this.notificationRepository.create({
+    const repository = manager
+      ? manager.getRepository(Notification)
+      : this.notificationRepository;
+    const notification = repository.create({
       recipient: { id: recipientId } as User,
-      ticket: null,
+      ticket: ticketId ? { id: ticketId } : null,
       referenceId: referenceId ?? null,
       title,
       message,
@@ -37,23 +45,21 @@ export class NotificationsService {
       isRead: false,
     });
 
-    return this.notificationRepository.save(notification);
+    return repository.save(notification);
   }
 
   // Get the logged-in user's notifications.
-  async findMyNotifications(userId: number) {
-    return this.notificationRepository.find({
-      where: {
-        recipient: { id: userId },
-      },
-      relations: {
-        ticket: true,
-      },
-      order: {
-        createdAt: 'DESC',
-      },
-      take: 30,
-    });
+  async findMyNotifications(userId: number, query: NotificationQueryDto) {
+    const notifications = this.notificationRepository
+      .createQueryBuilder('notification')
+      .leftJoinAndSelect('notification.ticket', 'ticket')
+      .where('notification.recipient = :userId', { userId });
+
+    if (query.unread) {
+      notifications.andWhere('notification.isRead = :isRead', { isRead: false });
+    }
+
+    return paginate(notifications, query, 'notification.createdAt');
   }
 
   // Get unread notification count.

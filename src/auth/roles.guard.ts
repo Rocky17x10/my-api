@@ -20,8 +20,9 @@ export class RolesGuard implements CanActivate {
       context.getClass(),
     ]);
 
+    // Deny by default: a route behind RolesGuard must say who may call it (@Roles / @AnyRole).
     if (!requiredRoles || requiredRoles.length === 0) {
-      return true;
+      return false;
     }
 
     const request = context.switchToHttp().getRequest();

@@ -5,16 +5,24 @@ import {
   Get,
   Patch,
   Body,
-  Req,
   UseGuards,
   Param,
   ParseIntPipe,
+  Query,
 } from '@nestjs/common';
 
 import { AssetReturnsService } from './asset-returns.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
-import { Roles } from '../auth/roles.decorator';
+import { AnyRole, Roles } from '../auth/roles.decorator';
+import type { AuthUser } from '../auth/jwt.strategy';
+
+import {
+  AssetReturnQueryDto,
+  CreateAssetReturnDto,
+  ReviewAssetReturnDto,
+} from './dto/asset-return.dto';
+import { CurrentUser } from '../common/current-user.decorator';
 
 @Controller('asset-returns')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -25,33 +33,36 @@ export class AssetReturnsController {
 
   // Employee: submit return request
   @Post()
+  @AnyRole()
   create(
-    @Req() req: any,
-    @Body() body: {
-      assetId: number;
-      employeeNote?: string;
-    },
+    @CurrentUser() user: AuthUser,
+    @Body() body: CreateAssetReturnDto,
   ) {
     return this.assetReturnsService.create(
-      req.user.userId,
-      Number(body.assetId),
+      user.userId,
+      body.assetId,
       body.employeeNote,
     );
   }
 
   // Employee: view own return requests
   @Get('my')
-  findMyReturns(@Req() req: any) {
+  @AnyRole()
+  findMyReturns(
+    @CurrentUser() user: AuthUser,
+    @Query() query: AssetReturnQueryDto,
+  ) {
     return this.assetReturnsService.findMyReturns(
-      req.user.userId,
+      user.userId,
+      query,
     );
   }
 
   // Admin and Super Admin: view all requests
   @Get()
   @Roles('admin', 'super_admin')
-  findAllReturns() {
-    return this.assetReturnsService.findAllReturns();
+  findAllReturns(@Query() query: AssetReturnQueryDto) {
+    return this.assetReturnsService.findAllReturns(query);
   }
 
   // Admin and Super Admin: review a return
@@ -59,16 +70,12 @@ export class AssetReturnsController {
   @Roles('admin', 'super_admin')
   review(
     @Param('id', ParseIntPipe) id: number,
-    @Req() req: any,
-    @Body() body: {
-      status: 'approved' | 'rejected';
-      condition?: 'good' | 'damaged' | 'needs_maintenance';
-      adminNote?: string;
-    },
+    @CurrentUser() user: AuthUser,
+    @Body() body: ReviewAssetReturnDto,
   ) {
     return this.assetReturnsService.review(
       id,
-      req.user.userId,
+      user.userId,
       body,
     );
   }

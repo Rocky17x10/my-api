@@ -9,8 +9,8 @@ import { Asset } from './asset.entity';
 import { AssetAssignmentHistory } from './asset-assignment-history.entity';
 import { AssetReturn } from './asset-return.entity';
 import { User } from '../users/user.entity';
-import { Notification } from '../support-tickets/notification.entity';
-import { ActivityLog } from '../activity-logs/activity-log.entity';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { ActivityLogsModule } from '../activity-logs/activity-logs.module';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -22,9 +22,9 @@ import { RolesGuard } from '../auth/roles.guard';
       AssetAssignmentHistory,
       AssetReturn,
       User,
-      Notification,
-      ActivityLog,
     ]),
+    NotificationsModule,
+    ActivityLogsModule,
   ],
   providers: [
     AssetsService,

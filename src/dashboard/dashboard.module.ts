@@ -11,6 +11,9 @@ import { AssetRequest } from '../asset-requests/asset-request.entity';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
+import { AssetReturn } from '../assets/asset-return.entity';
+import { Maintenance } from '../maintenance/maintenance.entity';
+import { SupportTicket } from '../support-tickets/support-ticket.entity';
 
 @Module({
   imports: [
@@ -18,6 +21,9 @@ import { RolesGuard } from '../auth/roles.guard';
       Asset,
       User,
       AssetRequest,
+      AssetReturn,
+      Maintenance,
+      SupportTicket,
     ]),
   ],
 
